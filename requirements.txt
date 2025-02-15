@@ -6,3 +6,9 @@ pydantic
 docling
 lancedb
 streamlit
+torch
+transformers
+pdf2image
+Pillow
+numpy
+timm
