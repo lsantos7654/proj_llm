@@ -122,7 +122,7 @@ def process_input(input_path):
     if os.path.isfile(input_path):
         return [input_path]
     elif os.path.isdir(input_path):
-        supported_extensions = {".pdf", ".txt", ".html", ".htm"}
+        supported_extensions = {".pdf", ".txt", ".html", ".htm", ".jpg", ".png"}
         files = []
         for root, _, filenames in os.walk(input_path):
             for filename in filenames:
@@ -149,7 +149,7 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["append", "overwrite"],
-        default="overwrite",
+        default="append",
         help="Whether to append to existing table or create new one",
     )
 
