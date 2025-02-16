@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Set, Union
+from typing import List, Dict, Any, Optional, Set
 import argparse
 import os
 import lancedb
@@ -20,8 +20,6 @@ class ChunkMetadata(LanceModel):
     Schema for chunk metadata. Fields must be in alphabetical order per Pydantic requirements.
     """
 
-    filename: Optional[str]
-    page_numbers: Optional[List[int]]
     title: Optional[str]
 
 
@@ -45,12 +43,24 @@ class Extract:
         self.MAX_TOKENS: int = 8191
         self.converter = DocumentConverter()
 
-    def extract_document(self, source: Union[str, Path]) -> Any:
+    def extract_document(self, source: Path) -> Any:
         return self.converter.convert(source)
+
+    def preview_document(self, source: Path, output_format="markdown"):
+        try:
+            result = self.converter.convert(source)
+            document = result.document
+
+            if output_format == "markdown":
+                return document.export_to_markdown()
+            elif output_format == "json":
+                return document.export_to_dict()
+        except Exception as e:
+            raise Exception(f"Error converting PDF: {e}")
 
 
 class LanceDBExtractor(Extract):
-    def __init__(self, db_path: Union[str, Path] = "data/lancedb") -> None:
+    def __init__(self, db_path: Path = Path("data/lancedb")) -> None:
         super().__init__()
         self.db = lancedb.connect(db_path)
         self.embedding_func = (
@@ -157,7 +167,7 @@ class LanceDBExtractor(Extract):
             print(f"  Fatal error: {error_msg}")
             raise RuntimeError(error_msg)
 
-    def process_source(self, source: Union[str, Path]) -> List[Dict[str, Any]]:
+    def process_source(self, source: Path) -> List[Dict[str, Any]]:
         try:
             print(f"Processing source: {source}")
             # Extract document
@@ -232,7 +242,7 @@ class LanceDBExtractor(Extract):
         return {"dataframe": table.to_pandas(), "row_count": table.count_rows()}
 
 
-def process_input(input_path: Union[str, Path]) -> List[Path]:
+def process_input(input_path: Path) -> List[Path]:
     if os.path.isfile(input_path):
         return [Path(input_path)]
     elif os.path.isdir(input_path):
@@ -268,10 +278,14 @@ def main() -> int:
     )
     parser.add_argument("input", help="Input file, directory, or URL", type=str)
     parser.add_argument(
-        "--db-path", default="data/lancedb", help="Path to LanceDB database", type=str
+        "-db",
+        "--db-path",
+        default="data/lancedb",
+        help="Path to LanceDB database",
+        type=str,
     )
     parser.add_argument(
-        "--table", default="docling", help="Table name to use or create", type=str
+        "-t", "--table", default="docling", help="Table name to use or create", type=str
     )
     parser.add_argument(
         "--mode",
@@ -289,16 +303,17 @@ def main() -> int:
         "--split-pdf", action="store_true", help="Split PDFs vertically into two halves"
     )
     parser.add_argument(
+        "-o",
         "--output-dir",
         default="output",
         help="Output directory for extracted tables and split PDFs",
         type=str,
     )
     parser.add_argument(
-        "--threshold",
-        type=float,
-        default=0.7,
-        help="Confidence threshold for table detection (0-1)",
+        "-p",
+        "--preview",
+        action="store_true",
+        help="Preview the document processing results without storing in database",
     )
 
     args = parser.parse_args()
@@ -322,6 +337,24 @@ def main() -> int:
         if not sources:
             print(f"No valid files found in {args.input}")
             return 1
+
+        if args.preview == True:
+            if len(sources) > 1:
+                print(f"\nFound {total_files} files to preview:")
+                for idx, src in enumerate(sources, 1):
+                    print(f"{idx}. {src}")
+                print("\nWould you like to proceed with processing these files? (y/n)")
+                response: str = input().lower()
+                if response != "y":
+                    print("Operation cancelled by user")
+                    return 0
+            extractor = Extract()
+            for source in sources:
+                try:
+                    print(extractor.preview_document(source))
+                except Exception as e:
+                    print(f"Error previewing {source}: {e}")
+            return 0
 
         print(f"\nFound {total_files} files to process:")
         for idx, src in enumerate(sources, 1):
