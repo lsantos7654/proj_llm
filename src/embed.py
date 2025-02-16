@@ -20,6 +20,8 @@ class ChunkMetadata(LanceModel):
     Schema for chunk metadata. Fields must be in alphabetical order per Pydantic requirements.
     """
 
+    filename: Optional[str]
+    page_numbers: Optional[List[int]]
     title: Optional[str]
 
 
@@ -44,11 +46,11 @@ class Extract:
         self.converter = DocumentConverter()
 
     def extract_document(self, source: Path) -> Any:
-        return self.converter.convert(source)
+        return self.converter.convert(str(source))
 
     def preview_document(self, source: Path, output_format="markdown"):
         try:
-            result = self.converter.convert(source)
+            result = self.converter.convert(str(source))
             document = result.document
 
             if output_format == "markdown":
