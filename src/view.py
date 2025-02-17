@@ -1,6 +1,7 @@
 import argparse
 import lancedb
 import pandas as pd
+import numpy as np
 
 pd.set_option("display.max_colwidth", None)
 
@@ -30,6 +31,36 @@ class TableViewer:
 
     def search(self, table, query, limit=5):
         return table.search(query).limit(limit).to_pandas()
+
+    def inspect_first_row(self, table):
+        df = table.to_pandas().head(1)
+        first_row = df.iloc[0]
+
+        print("\nFirst Row Data:")
+        print("==============")
+
+        for column in df.columns:
+            value = first_row[column]
+            print(f"\n{column}:")
+
+            if isinstance(value, (np.ndarray, list)):
+                print(f"Type: {type(value)}")
+                print(f"Shape/Length: {len(value)}")
+                print("Values:")
+                # For embeddings or arrays, print first few and last few values
+                if len(value) > 10:
+                    head_values = value[:5]
+                    tail_values = value[-5:]
+                    print(f"First 5: {head_values}")
+                    print(f"Last 5: {tail_values}")
+                else:
+                    print(value)
+            elif isinstance(value, dict):
+                print("Dictionary contents:")
+                for k, v in value.items():
+                    print(f"  {k}: {v}")
+            else:
+                print(value)
 
 
 def main():
@@ -64,6 +95,12 @@ def main():
         "--limit", type=int, default=5, help="Number of results to show"
     )
 
+    # Inspect first row command
+    inspect_parser = subparsers.add_parser(
+        "inspect", help="Inspect first row of the table"
+    )
+    inspect_parser.add_argument("table", help="Table name")
+
     args = parser.parse_args()
 
     try:
@@ -93,6 +130,10 @@ def main():
             print(f"\nSearching '{args.table}' for '{args.query}':")
             results = viewer.search(table, args.query, args.limit)
             print(results)
+
+        elif args.command == "inspect":
+            table = viewer.get_table(args.table)
+            viewer.inspect_first_row(table)
 
         else:
             parser.print_help()
