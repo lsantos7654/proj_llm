@@ -1,6 +1,5 @@
-from typing import List, Dict, Any, Optional, Set, Union
+from typing import List, Dict, Any, Optional, Union
 import argparse
-import os
 import lancedb
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling.document_converter import DocumentConverter
@@ -16,9 +15,7 @@ from utils.segment_tables import process_image, process_pdf
 import requests
 from xml.etree import ElementTree
 import logging
-import tempfile
 from git import Repo, GitCommandError
-import tempfile
 import re
 
 
