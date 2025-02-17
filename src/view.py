@@ -32,12 +32,9 @@ class TableViewer:
     def search(self, table, query, limit=5):
         return table.search(query).limit(limit).to_pandas()
 
-    def inspect_first_row(self, table):
+    def inspect_first_row(self, table, row=0):
         df = table.to_pandas().head(1)
-        first_row = df.iloc[0]
-
-        print("\nFirst Row Data:")
-        print("==============")
+        first_row = df.iloc[row]
 
         for column in df.columns:
             value = first_row[column]
@@ -100,6 +97,9 @@ def main():
         "inspect", help="Inspect first row of the table"
     )
     inspect_parser.add_argument("table", help="Table name")
+    inspect_parser.add_argument(
+        "--row", type=int, default=0, help="Which row to show (default first row)"
+    )
 
     args = parser.parse_args()
 
@@ -133,7 +133,7 @@ def main():
 
         elif args.command == "inspect":
             table = viewer.get_table(args.table)
-            viewer.inspect_first_row(table)
+            viewer.inspect_first_row(table, args.row)
 
         else:
             parser.print_help()

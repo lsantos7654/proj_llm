@@ -18,7 +18,8 @@ def init_db():
     Returns:
         LanceDB table object
     """
-    db = lancedb.connect("data/lancedb")
+    # db = lancedb.connect("data/lancedb")
+    db = lancedb.connect("data/testdb")
     return db.open_table("docling")
 
 
@@ -38,22 +39,20 @@ def get_context(query: str, table, num_results: int = 3) -> str:
 
     for _, row in results.iterrows():
         # Extract metadata
-        filename = row["metadata"]["filename"]
-        page_numbers = row["metadata"]["page_numbers"]
-        title = row["metadata"]["title"]
+        metadata = row["metadata"]
+        source_id = metadata.get("source_id", "Unknown source")
+        source_type = metadata.get("source_type", "Unknown type")
+        title = metadata.get("title", "Untitled section")
+        summary = metadata.get("summary", "")
 
         # Build source citation
-        source_parts = []
-        if filename:
-            source_parts.append(filename)
-        if page_numbers:
-            source_parts.append(f"p. {', '.join(str(p) for p in page_numbers)}")
-
-        source = f"\nSource: {' - '.join(source_parts)}"
+        source_info = f"\nSource: {source_id} ({source_type})"
         if title:
-            source += f"\nTitle: {title}"
+            source_info += f"\nTitle: {title}"
+        if summary:
+            source_info += f"\nSummary: {summary}"
 
-        contexts.append(f"{row['text']}{source}")
+        contexts.append(f"{row['text']}{source_info}")
 
     return "\n\n".join(contexts)
 
@@ -158,13 +157,15 @@ if prompt := st.chat_input("Ask a question about the document"):
 
             source = metadata.get("Source", "Unknown source")
             title = metadata.get("Title", "Untitled section")
+            summary = metadata.get("Summary", "")
 
             st.markdown(
                 f"""
                 <div class="search-result">
                     <details>
                         <summary>{source}</summary>
-                        <div class="metadata">Section: {title}</div>
+                        <div class="metadata">Title: {title}</div>
+                        {f'<div class="metadata">Summary: {summary}</div>' if summary else ''}
                         <div style="margin-top: 8px;">{text}</div>
                     </details>
                 </div>

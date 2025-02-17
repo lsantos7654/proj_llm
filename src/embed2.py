@@ -9,6 +9,7 @@ from numpy import result_type
 import requests
 from xml.etree import ElementTree
 import re
+import json
 from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import process_image, process_pdf
 from docling.document_converter import DocumentConverter
@@ -28,10 +29,10 @@ import sys
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
-# logging.basicConfig(
-#     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-# )
+# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -63,8 +64,10 @@ embedding_func = get_registry().get("openai").create(name="text-embedding-3-larg
 class ChunkMetadata(LanceModel):
     """Schema for chunk metadata"""
 
-    filename: Optional[str]
-    page_numbers: Optional[List[int]]
+    chunk_number: Optional[int]
+    source_id: Optional[str]
+    source_type: Optional[str]
+    summary: Optional[str]
     title: Optional[str]
 
 
@@ -72,7 +75,7 @@ class Chunks(LanceModel):
     """Schema for document chunks with embeddings"""
 
     text: str = embedding_func.SourceField()
-    vector: Vector(embedding_func.ndims()) = embedding_func.VectorField()  # type: ignore
+    vector: Vector(embedding_func.ndims()) = embedding_func.VectorField()
     metadata: ChunkMetadata
 
 
@@ -135,33 +138,19 @@ class LanceDBStorage:
             logger.debug(f"Current database connection: {self.db}")
             logger.info(f"Attempting to create/get table: {table_name}")
 
-            # Debug database state
-            logger.debug(f"Database path: {self.db._uri}")
-            logger.debug(f"Available tables: {self.db.table_names()}")
-
-            # First check if table exists
             exists = table_name in self.db.table_names()
             logger.debug(f"Table '{table_name}' exists: {exists}")
 
             if mode == ProcessingMode.APPEND and exists:
                 logger.info(f"Opening existing table: {table_name}")
-                logger.debug(f"Opening table in APPEND mode")
                 try:
                     self._table = self.db.open_table(table_name)
                     logger.debug(f"Successfully opened table: {self._table}")
-                    logger.debug(f"Table schema: {self._table.schema}")
-                    print(self._table)
-                except Exception as table_open_error:
-                    logger.error(
-                        f"Failed to open existing table: {str(table_open_error)}"
-                    )
+                except Exception as e:
+                    logger.error(f"Failed to open existing table: {str(e)}")
                     raise
             else:
-                # If overwrite mode or table doesn't exist
                 logger.info(f"Creating new table: {table_name}")
-                logger.debug(
-                    f"Creating table with mode: {'overwrite' if mode == ProcessingMode.OVERWRITE else 'create'}"
-                )
                 try:
                     self._table = self.db.create_table(
                         name=table_name,
@@ -173,47 +162,108 @@ class LanceDBStorage:
                         ),
                     )
                     logger.debug(f"Successfully created table: {self._table}")
-                    logger.debug(f"New table schema: {self._table.schema}")
-                except Exception as table_create_error:
-                    logger.error(f"Failed to create table: {str(table_create_error)}")
+                except Exception as e:
+                    logger.error(f"Failed to create table: {str(e)}")
                     raise
 
-            logger.debug(f"Returning table object: {self._table}")
             return self._table
 
         except Exception as e:
             logger.error(
                 f"Detailed error creating/getting table: {str(e)}", exc_info=True
             )
-            logger.debug(f"Exception type: {type(e)}")
-            logger.debug(f"Exception args: {e.args}")
             raise RuntimeError(f"Failed to create/get table: {str(e)}")
 
+    def _generate_title_and_summary(self, text: str, source_id: str) -> Dict[str, str]:
+        """Generate title and summary for chunk using OpenAI."""
+        logger.debug(
+            f"Starting title and summary generation for source_id: {source_id}"
+        )
+        logger.debug(f"Input text length: {len(text)}")
+
+        system_prompt = """You are an AI that extracts titles and summaries from document chunks.
+        Return a JSON object with 'title' and 'summary' keys.
+        For the title: Create a concise, descriptive title for this chunk.
+        For the summary: Create a brief summary of the main points in this chunk."""
+
+        logger.debug("Using system prompt for OpenAI completion")
+
+        try:
+            logger.debug("Making API call to OpenAI")
+            logger.debug(
+                f"Using first {min(len(text), 1000)} characters of text for context"
+            )
+
+            response = self.client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": f"Source: {source_id}\n\nContent:\n{text[:1000]}...",
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+
+            logger.debug("Successfully received response from OpenAI")
+            result = json.loads(response.choices[0].message.content)
+            logger.debug(f"Parsed JSON response: {result}")
+
+            # Log the length of generated title and summary
+            logger.debug(f"Generated title length: {len(result.get('title', ''))}")
+            logger.debug(f"Generated summary length: {len(result.get('summary', ''))}")
+
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+            logger.debug(f"Raw response content: {response.choices[0].message.content}")
+            return {
+                "title": "Error processing title",
+                "summary": "Error processing summary",
+            }
+        except Exception as e:
+            logger.error(f"Error generating title and summary: {e}")
+            logger.debug(f"Exception type: {type(e).__name__}")
+            logger.debug(f"Exception details: {str(e)}")
+            return {
+                "title": "Error processing title",
+                "summary": "Error processing summary",
+            }
+
     def process_chunks(self, chunks: List[Any]) -> List[Dict[str, Any]]:
-        """Process document chunks into storable format"""
+        """Process document chunks into storable format with enhanced metadata"""
         processed_chunks: List[Dict[str, Any]] = []
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             try:
-                # Extract page numbers
-                page_numbers = self._extract_page_numbers(chunk)
+                # Extract metadata from chunk
+                filename = (
+                    self._extract_filename(chunk) or f"chunk_{i}"
+                )  # Ensure non-null
+                content = str(chunk.text)
 
-                # Extract filename and title
-                filename = self._extract_filename(chunk)
-                title = self._extract_title(chunk)
+                # Determine source type based on filename
+                source_type = "pdf" if filename.endswith(".pdf") else "web"
+
+                generated_data = self._generate_title_and_summary(content, filename)
 
                 chunk_dict = {
-                    "text": str(chunk.text),
+                    "text": content,
                     "metadata": {
-                        "filename": filename,
-                        "page_numbers": page_numbers,
-                        "title": title,
+                        "source_type": source_type,  # Always non-null
+                        "source_id": filename,  # Always non-null
+                        "chunk_number": i,  # Always non-null
+                        "title": generated_data.get("title"),  # Can be null
+                        "summary": generated_data.get("summary"),  # Can be null
                     },
                 }
                 processed_chunks.append(chunk_dict)
+                logger.info(f"Processed chunk {i} from {filename}")
 
             except Exception as e:
-                logger.error(f"Error processing chunk: {str(e)}")
+                logger.error(f"Error processing chunk {i}: {str(e)}")
                 continue
 
         if not processed_chunks:
@@ -221,34 +271,11 @@ class LanceDBStorage:
 
         return processed_chunks
 
-    def _extract_page_numbers(self, chunk: Any) -> Optional[List[int]]:
-        """Extract page numbers from chunk metadata"""
-        try:
-            return [
-                page_no
-                for page_no in sorted(
-                    set(
-                        prov.page_no
-                        for item in chunk.meta.doc_items
-                        for prov in item.prov
-                    )
-                )
-            ] or None
-        except (AttributeError, TypeError):
-            return None
-
     def _extract_filename(self, chunk: Any) -> Optional[str]:
         """Extract filename from chunk metadata"""
         try:
             return chunk.meta.origin.filename
         except AttributeError:
-            return None
-
-    def _extract_title(self, chunk: Any) -> Optional[str]:
-        """Extract title from chunk metadata"""
-        try:
-            return chunk.meta.headings[0] if chunk.meta.headings else None
-        except (AttributeError, IndexError):
             return None
 
 
@@ -502,6 +529,33 @@ class URLProcessor(FileProcessor):
     def __init__(self):
         super().__init__()
         self.converter = DocumentConverter()
+
+    def _get_title_and_summary(self, chunk: str) -> Dict[str, str]:
+        """Generate title and summary for a chunk using GPT-4"""
+        system_prompt = """You are an AI that extracts titles and summaries from documentation chunks.
+        Return a JSON object with 'title' and 'summary' keys.
+        Title: Create a concise, descriptive title for this content (max 10 words)
+        Summary: Create a brief summary of the main points (max 50 words)"""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model="gpt-4-turbo-preview",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": chunk[:1000],
+                    },  # First 1000 chars for context
+                ],
+                response_format={"type": "json_object"},
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"Error getting title and summary: {e}")
+            return {
+                "title": "Error processing title",
+                "summary": "Error processing summary",
+            }
 
     def can_process(self, file_path: Union[str, Path]) -> bool:
         if isinstance(file_path, Path):
