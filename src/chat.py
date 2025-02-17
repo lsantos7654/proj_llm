@@ -23,7 +23,7 @@ def init_db():
     return db.open_table("docling")
 
 
-def get_context(query: str, table, num_results: int = 3) -> str:
+def get_context(query: str, table, num_results: int = 5) -> str:
     """Search the database for relevant context.
 
     Args:
@@ -34,7 +34,7 @@ def get_context(query: str, table, num_results: int = 3) -> str:
     Returns:
         str: Concatenated context from relevant chunks with source information
     """
-    results = table.search(query).limit(num_results).to_pandas()
+    results = table.search(query).metric("cosine").limit(num_results).to_pandas()
     contexts = []
 
     for _, row in results.iterrows():

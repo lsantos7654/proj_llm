@@ -32,32 +32,50 @@ class TableViewer:
     def search(self, table, query, limit=5):
         return table.search(query).limit(limit).to_pandas()
 
-    def inspect_first_row(self, table, row=0):
-        df = table.to_pandas().head(1)
-        first_row = df.iloc[row]
+    def inspect_rows(self, table, start_row=0, num_rows=1):
+        """
+        Inspect a range of rows from the table.
 
-        for column in df.columns:
-            value = first_row[column]
-            print(f"\n{column}:")
+        Args:
+            table: LanceDB table
+            start_row (int): Starting row index
+            num_rows (int): Number of rows to inspect
+        """
+        df = table.to_pandas()
+        total_rows = len(df)
 
-            if isinstance(value, (np.ndarray, list)):
-                print(f"Type: {type(value)}")
-                print(f"Shape/Length: {len(value)}")
-                print("Values:")
-                # For embeddings or arrays, print first few and last few values
-                if len(value) > 10:
-                    head_values = value[:5]
-                    tail_values = value[-5:]
-                    print(f"First 5: {head_values}")
-                    print(f"Last 5: {tail_values}")
+        if start_row >= total_rows:
+            print(
+                f"Error: Start row {start_row} exceeds table size ({total_rows} rows)"
+            )
+            return
+
+        end_row = min(start_row + num_rows, total_rows)
+        rows_to_show = df.iloc[start_row:end_row]
+
+        for idx, row in rows_to_show.iterrows():
+            print(f"\n=== Row {idx} ===")
+            for column in df.columns:
+                value = row[column]
+                print(f"\n{column}:")
+
+                if isinstance(value, (np.ndarray, list)):
+                    print(f"Type: {type(value)}")
+                    print(f"Shape/Length: {len(value)}")
+                    print("Values:")
+                    if len(value) > 10:
+                        head_values = value[:5]
+                        tail_values = value[-5:]
+                        print(f"First 5: {head_values}")
+                        print(f"Last 5: {tail_values}")
+                    else:
+                        print(value)
+                elif isinstance(value, dict):
+                    print("Dictionary contents:")
+                    for k, v in value.items():
+                        print(f"  {k}: {v}")
                 else:
                     print(value)
-            elif isinstance(value, dict):
-                print("Dictionary contents:")
-                for k, v in value.items():
-                    print(f"  {k}: {v}")
-            else:
-                print(value)
 
 
 def main():
@@ -92,15 +110,14 @@ def main():
         "--limit", type=int, default=5, help="Number of results to show"
     )
 
-    # Inspect first row command
-    inspect_parser = subparsers.add_parser(
-        "inspect", help="Inspect first row of the table"
-    )
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect rows of the table")
     inspect_parser.add_argument("table", help="Table name")
     inspect_parser.add_argument(
-        "--row", type=int, default=0, help="Which row to show (default first row)"
+        "--start", type=int, default=0, help="Starting row index (default: 0)"
     )
-
+    inspect_parser.add_argument(
+        "--rows", type=int, default=1, help="Number of rows to show (default: 1)"
+    )
     args = parser.parse_args()
 
     try:
@@ -133,7 +150,7 @@ def main():
 
         elif args.command == "inspect":
             table = viewer.get_table(args.table)
-            viewer.inspect_first_row(table, args.row)
+            viewer.inspect_rows(table, args.start, args.rows)
 
         else:
             parser.print_help()
