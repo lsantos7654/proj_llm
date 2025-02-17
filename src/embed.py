@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Union
 import argparse
 import os
 import lancedb
@@ -13,6 +13,13 @@ from utils.tokenizer import OpenAITokenizerWrapper
 from pathlib import Path
 from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import process_image, process_pdf
+import requests
+from xml.etree import ElementTree
+import logging
+import tempfile
+from git import Repo, GitCommandError
+import tempfile
+import re
 
 
 class ChunkMetadata(LanceModel):
@@ -45,12 +52,18 @@ class Extract:
         self.MAX_TOKENS: int = 8191
         self.converter = DocumentConverter()
 
-    def extract_document(self, source: Path) -> Any:
-        return self.converter.convert(str(source))
+    def extract_document(self, source: Union[str, Path]) -> Any:
+        if isinstance(source, str) and source.startswith(("http://", "https://")):
+            try:
+                return self.converter.convert(str(source))
+            except requests.RequestException as e:
+                raise Exception(f"Failed to fetch URL {source}: {e}")
+        else:
+            return self.converter.convert(source)
 
-    def preview_document(self, source: Path, output_format="markdown"):
+    def preview_document(self, source: Union[str, Path], output_format="markdown"):
         try:
-            result = self.converter.convert(str(source))
+            result = self.converter.convert(source)
             document = result.document
 
             if output_format == "markdown":
@@ -169,7 +182,7 @@ class LanceDBExtractor(Extract):
             print(f"  Fatal error: {error_msg}")
             raise RuntimeError(error_msg)
 
-    def process_source(self, source: Path) -> List[Dict[str, Any]]:
+    def process_source(self, source: Union[str, Path]) -> List[Dict[str, Any]]:
         try:
             print(f"Processing source: {source}")
             # Extract document
@@ -244,26 +257,136 @@ class LanceDBExtractor(Extract):
         return {"dataframe": table.to_pandas(), "row_count": table.count_rows()}
 
 
-def process_input(input_path: Path) -> List[Path]:
-    if os.path.isfile(input_path):
-        return [Path(input_path)]
-    elif os.path.isdir(input_path):
-        supported_extensions: Set[str] = {
-            ".pdf",
-            ".txt",
-            ".html",
-            ".htm",
-            ".jpg",
-            ".png",
+def process_sitemap(url: str) -> List[Union[str, Path]]:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+
+        # Parse the XML
+        root = ElementTree.fromstring(response.content)
+
+        # Handle different sitemap namespaces
+        namespaces = {
+            "sm": "http://www.sitemaps.org/schemas/sitemap/0.9",
+            "xhtml": "http://www.w3.org/1999/xhtml",
         }
-        files: List[Path] = []
-        for root, _, filenames in os.walk(input_path):
-            for filename in filenames:
-                if Path(filename).suffix.lower() in supported_extensions:
-                    files.append(Path(os.path.join(root, filename)))
-        return files
-    elif isinstance(input_path, str) and input_path.startswith(("http://", "https://")):
-        return [Path(input_path)]
+
+        urls: List[Union[str, Path]] = []
+
+        # Check if this is a sitemap index
+        sitemaps = root.findall(".//sm:sitemap/sm:loc", namespaces)
+        if sitemaps:
+            # This is a sitemap index, process each sitemap
+            for sitemap in sitemaps:
+                if sitemap.text:  # Check for None
+                    urls.extend(process_sitemap(sitemap.text))
+        else:
+            # This is a regular sitemap, extract URLs
+            locations = root.findall(".//sm:url/sm:loc", namespaces)
+            # Filter out None values and convert to list of strings
+            valid_urls = [loc.text for loc in locations if loc.text is not None]
+            urls.extend(valid_urls)
+
+        return urls
+    except requests.RequestException as e:
+        logging.error(f"Failed to fetch sitemap: {e}")
+        return []
+    except ElementTree.ParseError as e:
+        logging.error(f"Failed to parse sitemap XML: {e}")
+        return []
+
+
+def validate_git_url(url: str) -> bool:
+    """Validate if the URL is a valid Git repository URL."""
+    # Basic pattern for git URLs
+    git_patterns = [
+        r"https?://github\.com/[\w-]+/[\w-]+(?:\.git)?/?$",
+        r"git@github\.com:[\w-]+/[\w-]+(?:\.git)?/?$",
+    ]
+    return any(re.match(pattern, url) for pattern in git_patterns)
+
+
+def process_git_repo(repo_url: str, output_dir: Path) -> List[Union[str, Path]]:
+    """Clone and process a Git repository.
+
+    Args:
+        repo_url: URL of the Git repository
+
+    Returns:
+        List of Path objects for files in the repository
+    """
+    # Validate URL format first
+    if not validate_git_url(repo_url):
+        logging.error(f"Invalid Git repository URL format: {repo_url}")
+        return []
+
+    try:
+        print(f"Attempting to clone {repo_url} to {output_dir}")
+
+        # Try to clone the repository
+        repo = Repo.clone_from(repo_url, output_dir)
+
+        # Verify the clone was successful
+        if not repo.git_dir:
+            raise GitCommandError("git clone", "Repository appears empty")
+
+        # List files in the repository for debugging
+        temp_path = Path(output_dir)
+        all_files = list(temp_path.rglob("*"))
+        print(f"Files found in repository: {len(all_files)}")
+        for file in all_files[:5]:  # Show first 5 files
+            print(f"Found: {file.relative_to(temp_path)}")
+
+        # Process the directory
+        sources = process_input(Path(output_dir), output_dir)
+
+        if not sources:
+            print("No supported files found in repository")
+        else:
+            print(f"Found {len(sources)} supported files")
+
+        return sources
+
+    except GitCommandError as e:
+        logging.error(f"Git command failed: {e.command}, {e.status}, {e.stderr}")
+        return []
+    except Exception as e:
+        logging.error(f"Failed to process Git repository {repo_url}: {e}")
+        return []
+
+
+def process_input(
+    input_path: Union[str, Path], output_dir: Path
+) -> List[Union[str, Path]]:
+    """Process input sources and return a list of valid sources.
+
+    Args:
+        input_path: Either a string URL or Path object
+
+    Returns:
+        List of string URLs and Path objects
+    """
+    if isinstance(input_path, str) and (
+        input_path.endswith(".git")
+        or "github.com" in input_path
+        or "gitlab.com" in input_path
+    ):
+        print(f"Processing Git Repo {input_path}")
+        return process_git_repo(input_path, output_dir)
+
+    if isinstance(input_path, str) and input_path.startswith(("http://", "https://")):
+        if input_path.endswith("sitemap.xml"):
+            return process_sitemap(input_path)
+        return [str(input_path)]  # Return URL as string
+
+    # Convert string to Path if it's a local path
+    input_path = Path(input_path) if isinstance(input_path, str) else input_path
+
+    if input_path.is_file():
+        return [input_path]
+    elif input_path.is_dir():
+        # Return all files, regardless of extension
+        return [p for p in input_path.rglob("*") if p.is_file()]
     else:
         raise ValueError(f"Invalid input path: {input_path}")
 
@@ -320,7 +443,7 @@ def main() -> int:
 
     args = parser.parse_args()
     output_dir = Path(args.output_dir)
-    processed_sources: List[Path] = []
+    processed_sources: List[Union[str, Path]] = []
 
     try:
         print("\n=== Starting Processing ===")
@@ -333,19 +456,19 @@ def main() -> int:
 
         # Process input path
         print("\nScanning for files...")
-        sources: List[Path] = process_input(args.input)
+        sources: List[Union[str, Path]] = process_input(args.input, args.output_dir)
         total_files: int = len(sources)
 
         if not sources:
             print(f"No valid files found in {args.input}")
             return 1
 
-        if args.preview == True:
+        if args.preview:
             if len(sources) > 1:
                 print(f"\nFound {total_files} files to preview:")
                 for idx, src in enumerate(sources, 1):
                     print(f"{idx}. {src}")
-                print("\nWould you like to proceed with processing these files? (y/n)")
+                print("\nWould you like to proceed with previewing these files? (y/n)")
                 response: str = input().lower()
                 if response != "y":
                     print("Operation cancelled by user")
@@ -369,6 +492,11 @@ def main() -> int:
             return 0
 
         for idx, source in enumerate(sources, 1):
+            if isinstance(source, str) and source.startswith(("http://", "https://")):
+                print(f"\n[{idx}/{total_files}] Processing: {source}")
+                processed_sources.append(source)
+                continue
+
             source_path = Path(source)
             print(f"\n[{idx}/{total_files}] Processing: {source_path}")
 
