@@ -1,6 +1,7 @@
-from pathlib import Path
 import argparse
+from pathlib import Path
 from typing import Tuple
+
 from PyPDF2 import PdfReader, PdfWriter
 
 

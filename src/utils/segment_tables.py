@@ -1,10 +1,11 @@
-import torch
-from transformers import DetrImageProcessor, TableTransformerForObjectDetection
-from PIL import Image
 import argparse
 from pathlib import Path
-from pdf2image import convert_from_path
 from typing import List
+
+import torch
+from pdf2image import convert_from_path
+from PIL import Image
+from transformers import DetrImageProcessor, TableTransformerForObjectDetection
 
 
 def get_table_filename(source_path: Path, page_num: int, table_num: int) -> Path:
@@ -73,7 +74,7 @@ def detect_and_extract_tables(
     return saved_paths
 
 
-def process_pdf(pdf_path: Path, output_dir: Path) -> List[Path]:
+def extract_table_from_pdf(pdf_path: Path, output_dir: Path) -> List[Path]:
     """
     Process a PDF file and extract tables from each page.
 
@@ -103,7 +104,7 @@ def process_pdf(pdf_path: Path, output_dir: Path) -> List[Path]:
     return all_table_paths
 
 
-def process_image(image_path: Path, output_dir: Path) -> List[Path]:
+def extract_table_from_image(image_path: Path, output_dir: Path) -> List[Path]:
     """
     Process a single image and extract tables from it.
 

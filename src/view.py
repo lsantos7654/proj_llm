@@ -1,4 +1,5 @@
 import argparse
+
 import lancedb
 import numpy as np
 

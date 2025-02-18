@@ -1,32 +1,35 @@
+"""Document processing and embedding system for storing and retrieving documents."""
+
 # Standard library imports
-import sys
-import re
+import argparse
 import json
 import logging
-import argparse
+import re
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from xml.etree import ElementTree
+
+import lancedb
 
 # Third-party imports
 import requests
-import lancedb
-from openai import OpenAI
+from docling.document_converter import DocumentConverter
+from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from dotenv import load_dotenv
+from git import Repo
+from lancedb.embeddings import get_registry
 from lancedb.pydantic import LanceModel, Vector
 from lancedb.table import Table
-from lancedb.embeddings import get_registry
+from openai import OpenAI
 
 # Local/application imports
 from utils.pdf_spliter import split_pdf_vertically
-from utils.segment_tables import process_image, process_pdf
+from utils.segment_tables import extract_table_from_pdf
 from utils.tokenizer import OpenAITokenizerWrapper
-from docling.document_converter import DocumentConverter
-from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
-
 
 load_dotenv()
 
@@ -38,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessingMode(Enum):
-    """Enum for different processing modes"""
+    """Enum for different processing modes."""
 
     APPEND = auto()
     OVERWRITE = auto()
@@ -46,7 +49,7 @@ class ProcessingMode(Enum):
 
 @dataclass
 class ProcessingOptions:
-    """Configuration options for file processing"""
+    """Configuration options for file processing."""
 
     extract_tables: bool = False
     split_vertical: bool = False
@@ -63,7 +66,7 @@ embedding_func = get_registry().get("openai").create(name="text-embedding-3-larg
 
 
 class ChunkMetadata(LanceModel):
-    """Schema for chunk metadata"""
+    """Schema for chunk metadata."""
 
     chunk_number: Optional[int]
     source_id: Optional[str]
@@ -73,7 +76,7 @@ class ChunkMetadata(LanceModel):
 
 
 class Chunks(LanceModel):
-    """Schema for document chunks with embeddings"""
+    """Schema for document chunks with embeddings."""
 
     text: str = embedding_func.SourceField()
     vector: Vector(embedding_func.ndims()) = embedding_func.VectorField()
@@ -81,13 +84,30 @@ class Chunks(LanceModel):
 
 
 class ProcessingResult:
-    """Class to hold processing results and metadata"""
+    """Class to hold processing results and metadata.
+
+    This class encapsulates the results of processing one or more files, including
+    success/failure status, processed file paths, associated metadata, and any error
+    messages that occurred during processing.
+
+    Attributes:
+        processed_files: List of processed file paths
+        metadata: Optional dictionary of additional metadata
+        success: Boolean indicating if processing was successful
+        error: Error message if processing failed, None otherwise
+    """
 
     def __init__(
         self,
         processed_files: List[Union[str, Path]],
         metadata: Optional[Dict[str, Any]] = None,
     ):
+        """Initialize a new ProcessingResult instance.
+
+        Args:
+            processed_files: List of paths (str or Path) to successfully processed files
+            metadata: Optional dictionary containing additional processing metadata
+        """
         self.processed_files = processed_files
         self.metadata = metadata or {}
         self.success = bool(processed_files)
@@ -95,6 +115,15 @@ class ProcessingResult:
 
     @classmethod
     def error(cls, error_message: str) -> "ProcessingResult":
+        """Create a ProcessingResult instance representing an error.
+
+        Args:
+            error_message: Description of the error that occurred
+
+        Returns:
+            ProcessingResult: A new instance with success=False
+            and the specified error message
+        """
         result = cls([])
         result.success = False
         result.error = error_message
@@ -102,39 +131,65 @@ class ProcessingResult:
 
 
 class FileProcessor(ABC):
-    """Base class for file type processors"""
+    """Base class for file type processors."""
 
     def __init__(self):
+        """Initialize processing options with default values."""
         self.options: Optional[ProcessingOptions] = None
 
     @abstractmethod
     def can_process(self, file_path: Union[str, Path]) -> bool:
-        """Check if this processor can handle the given file"""
+        """Determine if a given file can be processed by this processor.
+
+        Args:
+            file_path (Union[str, Path]): Path to the file to be checked
+
+        Returns:
+            bool: True if the file is a PDF and can be processed, False otherwise
+
+        Note:
+            Only processes Path objects with .pdf extension (case-insensitive)
+        """
+        """Determine if this processor can handle the given file.
+
+        Args:
+            file_path: Path to the file to be processed
+
+        Returns:
+            bool: True if this processor can handle the file, False otherwise
+        """
+        """Check if this processor can handle the given file."""
         pass
 
     @abstractmethod
     def process(self, file_path: Union[str, Path]) -> ProcessingResult:
-        """Process the file and return ProcessingResult"""
+        """Process the file and return ProcessingResult."""
         pass
 
     def set_options(self, options: ProcessingOptions) -> None:
-        """Set processing options"""
+        """Set processing options."""
         self.options = options
 
 
 class LanceDBStorage:
-    """Handles storage and retrieval from LanceDB"""
+    """Handles storage and retrieval from LanceDB."""
 
     def __init__(self, db_path: Path):
+        """Initialize LanceDB storage connection.
+
+        Args:
+            db_path: Path to the LanceDB database
+        """
         self.db = lancedb.connect(str(db_path))
         self.client = OpenAI()
         self._table = None  # Add a cached table reference
 
     def create_or_get_table(self, table_name: str, mode: ProcessingMode) -> Table:
-        """Create a new table or get existing one based on mode"""
+        """Create a new table or get existing one based on mode."""
         try:
             logger.debug(
-                f"Entering create_or_get_table with table_name={table_name}, mode={mode}"
+                "Entering create_or_get_table with "
+                f"table_name={table_name}, mode={mode}"
             )
             logger.debug(f"Current database connection: {self.db}")
             logger.info(f"Attempting to create/get table: {table_name}")
@@ -182,10 +237,12 @@ class LanceDBStorage:
         )
         logger.debug(f"Input text length: {len(text)}")
 
-        system_prompt = """You are an AI that extracts titles and summaries from document chunks.
-        Return a JSON object with 'title' and 'summary' keys.
-        For the title: Create a concise, descriptive title for this chunk.
-        For the summary: Create a brief summary of the main points in this chunk."""
+        system_prompt = (
+            "You are an AI that extracts titles and summaries from document chunks. "
+            "Return a JSON object with 'title' and 'summary' keys. "
+            "For the title: Create a concise, descriptive title for this chunk. "
+            "For the summary: Create a brief summary of the main points in this chunk."
+        )
 
         logger.debug("Using system prompt for OpenAI completion")
 
@@ -234,7 +291,7 @@ class LanceDBStorage:
             }
 
     def process_chunks(self, chunks: List[Any]) -> List[Dict[str, Any]]:
-        """Process document chunks into storable format with enhanced metadata"""
+        """Process document chunks into storable format with enhanced metadata."""
         processed_chunks: List[Dict[str, Any]] = []
 
         for i, chunk in enumerate(chunks):
@@ -273,7 +330,7 @@ class LanceDBStorage:
         return processed_chunks
 
     def _extract_filename(self, chunk: Any) -> Optional[str]:
-        """Extract filename from chunk metadata"""
+        """Extract filename from chunk metadata."""
         try:
             return chunk.meta.origin.filename
         except AttributeError:
@@ -281,16 +338,21 @@ class LanceDBStorage:
 
 
 class StorageHandler:
-    """Coordinates storage of processed files"""
+    """Coordinates storage of processed files."""
 
     def __init__(self, options: ProcessingOptions):
+        """Initialize storage handler with processing options.
+
+        Args:
+            options: Configuration options for processing
+        """
         self.options = options
         self.storage = LanceDBStorage(options.db_path)
         self.table = None
         self.initialize_storage()
 
     def initialize_storage(self) -> None:
-        """Initialize storage and create/get table"""
+        """Initialize storage and create/get table."""
         try:
             logger.debug("Starting storage initialization")
             self.table = self.storage.create_or_get_table(
@@ -313,8 +375,7 @@ class StorageHandler:
             raise RuntimeError(f"Failed to initialize storage: {str(e)}")
 
     def store_results(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Store processing results in LanceDB"""
-
+        """Store processing results in LanceDB."""
         successful_stores = 0
         failed_stores = 0
         total_chunks = 0
@@ -364,7 +425,7 @@ class StorageHandler:
             return []
 
     def get_storage_info(self) -> Dict[str, Any]:
-        """Get information about the storage state"""
+        """Get information about the storage state."""
         if not self.table:
             raise RuntimeError("Storage not initialized")
 
@@ -376,31 +437,32 @@ class StorageHandler:
 
 
 class ProcessingEngine:
-    """Main engine for coordinating file processing"""
+    """Main engine for coordinating file processing."""
 
     def __init__(self):
+        """Initialize ProcessingEngine."""
         self.processors: List[FileProcessor] = []
         self.options: Optional[ProcessingOptions] = None
 
     def register_processor(self, processor: FileProcessor) -> None:
-        """Register a new file processor"""
+        """Register a new file processor."""
         self.processors.append(processor)
 
     def set_options(self, options: ProcessingOptions) -> None:
-        """Set processing options and propagate to all processors"""
+        """Set processing options and propagate to all processors."""
         self.options = options
         for processor in self.processors:
             processor.set_options(options)
 
     def get_processor(self, file_path: Union[str, Path]) -> Optional[FileProcessor]:
-        """Get appropriate processor for a file"""
+        """Get appropriate processor for a file."""
         for processor in self.processors:
             if processor.can_process(file_path):
                 return processor
         return None
 
     def process_file(self, file_path: Union[str, Path]) -> ProcessingResult:
-        """Process a single file"""
+        """Process a single file."""
         if not self.options:
             return ProcessingResult.error("No processing options set")
 
@@ -415,7 +477,7 @@ class ProcessingEngine:
             return ProcessingResult.error(str(e))
 
     def process_input(self, input_path: Union[str, Path]) -> List[ProcessingResult]:
-        """Process input path (file, directory, or URL)"""
+        """Process input path (file, directory, or URL)."""
         if not self.options:
             return [ProcessingResult.error("No processing options set")]
 
@@ -450,15 +512,43 @@ class ProcessingEngine:
 
 
 class PDFProcessor(FileProcessor):
-    """Processor for PDF files"""
+    """Processor for handling PDF files.
+
+    This class provides functionality to process PDF files,
+    including splitting PDFs vertically,
+    extracting tables, and converting content to markdown format.
+    It inherits from FileProcessor and implements specific
+    PDF processing capabilities.
+
+    Attributes:
+        converter (DocumentConverter): Converter for transforming
+        PDFs to processable documents
+        tokenizer (OpenAITokenizerWrapper): Tokenizer for text processing
+        MAX_TOKENS (int): Maximum number of tokens allowed per chunk
+    """
 
     def __init__(self):
+        """Initialize the PDF processor with document converter and tokenizer.
+
+        Sets up required components for PDF processing including:
+        - Document converter for PDF transformation
+        - OpenAI tokenizer for text processing
+        - Maximum token limit (8191)
+        """
         super().__init__()
         self.converter = DocumentConverter()
         self.tokenizer = OpenAITokenizerWrapper()
         self.MAX_TOKENS: int = 8191
 
     def can_process(self, file_path: Union[str, Path]) -> bool:
+        """Check if the file can be processed by this PDF processor.
+
+        Args:
+            file_path: Path to the file to check
+
+        Returns:
+            bool: True if file is a PDF and can be processed, False otherwise
+        """
         if isinstance(file_path, str):
             return False
         result = file_path.suffix.lower() == ".pdf"
@@ -467,6 +557,15 @@ class PDFProcessor(FileProcessor):
         return result
 
     def setup_chunker(self) -> HybridChunker:
+        """Create and configure a HybridChunker instance.
+
+        Returns:
+            HybridChunker: Configured chunker instance for processing PDF content
+
+        Note:
+            The chunker is configured with the class's tokenizer and MAX_TOKENS setting,
+            with peer merging enabled for optimal chunk creation.
+        """
         return HybridChunker(
             tokenizer=self.tokenizer,
             max_tokens=self.MAX_TOKENS,
@@ -474,6 +573,28 @@ class PDFProcessor(FileProcessor):
         )
 
     def process(self, file_path: Path) -> ProcessingResult:
+        """Process a PDF file according to configured options.
+
+        This method handles the main PDF processing workflow, including:
+        - Vertical splitting of PDFs if enabled
+        - Table extraction if enabled
+        - Preview generation if enabled
+
+        Args:
+            file_path (Path): Path to the PDF file to process
+
+        Returns:
+            ProcessingResult: Object containing processing results and metadata
+
+        Raises:
+            ProcessingResult.error: If processing fails or no options are set
+
+        Note:
+            The processing behavior is controlled by the options set in self.options:
+            - split_vertical: Splits PDF into left and right pages
+            - extract_tables: Extracts tables from the PDF
+            - preview: Generates a markdown preview of the document
+        """
         if not self.options:
             return ProcessingResult.error("No processing options set")
 
@@ -493,7 +614,9 @@ class PDFProcessor(FileProcessor):
                 if self.options.extract_tables:
                     tables: List[Path] = []
                     for split_pdf in [left_path, right_path]:
-                        pdf_tables = process_pdf(split_pdf, self.options.output_dir)
+                        pdf_tables = extract_table_from_pdf(
+                            split_pdf, self.options.output_dir
+                        )
                         tables.extend(pdf_tables)
                         processed_files.extend(pdf_tables)
                     metadata["split_pdf_tables"] = [str(t) for t in tables]
@@ -502,7 +625,7 @@ class PDFProcessor(FileProcessor):
 
                 # Process original PDF for tables if enabled
                 if self.options.extract_tables:
-                    tables = process_pdf(file_path, self.options.output_dir)
+                    tables = extract_table_from_pdf(file_path, self.options.output_dir)
                     processed_files.extend(tables)
                     metadata["tables"] = [str(t) for t in tables]
 
@@ -517,6 +640,20 @@ class PDFProcessor(FileProcessor):
             return ProcessingResult.error(f"Error processing PDF {file_path}: {str(e)}")
 
     def preview_document(self, file_path: Path) -> str:
+        """Generate a markdown preview of a PDF document.
+
+        Args:
+            file_path (Path): Path to the PDF file to preview
+
+        Returns:
+            str: Markdown representation of the PDF content
+
+        Raises:
+            Exception: If preview generation fails, with error details
+
+        Note:
+            Uses the DocumentConverter to transform PDF content into markdown format
+        """
         try:
             result = self.converter.convert(file_path)
             return result.document.export_to_markdown()
@@ -525,40 +662,22 @@ class PDFProcessor(FileProcessor):
 
 
 class URLProcessor(FileProcessor):
-    """Processor for URLs and sitemaps"""
+    """Processor for URLs and sitemaps."""
 
     def __init__(self):
+        """Initialize URL and sitemap processor."""
         super().__init__()
         self.converter = DocumentConverter()
 
-    def _get_title_and_summary(self, chunk: str) -> Dict[str, str]:
-        """Generate title and summary for a chunk using GPT-4"""
-        system_prompt = """You are an AI that extracts titles and summaries from documentation chunks.
-        Return a JSON object with 'title' and 'summary' keys.
-        Title: Create a concise, descriptive title for this content (max 10 words)
-        Summary: Create a brief summary of the main points (max 50 words)"""
-
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": chunk[:1000],
-                    },  # First 1000 chars for context
-                ],
-                response_format={"type": "json_object"},
-            )
-            return json.loads(response.choices[0].message.content)
-        except Exception as e:
-            print(f"Error getting title and summary: {e}")
-            return {
-                "title": "Error processing title",
-                "summary": "Error processing summary",
-            }
-
     def can_process(self, file_path: Union[str, Path]) -> bool:
+        """Check if this processor can handle the given URL.
+
+        Args:
+            file_path: URL to process
+
+        Returns:
+            bool: True if URL can be processed, False otherwise
+        """
         if isinstance(file_path, Path):
             return False
         result = file_path.startswith(("http://", "https://"))
@@ -567,6 +686,14 @@ class URLProcessor(FileProcessor):
         return result
 
     def process(self, file_path: Union[str, Path]) -> ProcessingResult:
+        """Process a URL or sitemap.
+
+        Args:
+            file_path: URL to process
+
+        Returns:
+            ProcessingResult: Results of URL processing
+        """
         if not self.options:
             return ProcessingResult.error("No processing options set")
 
@@ -587,6 +714,23 @@ class URLProcessor(FileProcessor):
             return ProcessingResult.error(f"Error processing URL {url}: {str(e)}")
 
     def process_sitemap(self, url: str) -> List[str]:
+        """Process a sitemap XML file and extract all URLs.
+
+        This method handles both regular sitemaps and sitemap indexes.
+        For sitemap indexes, it recursively processes
+        all referenced sitemaps.
+
+        Args:
+            url (str): The URL of the sitemap to process
+
+        Returns:
+            List[str]: A list of all URLs found in the sitemap and its sub-sitemaps
+
+        Note:
+            - Supports both standard sitemaps and sitemap index files
+            - Uses XML namespaces for proper parsing
+            - Handles nested sitemaps recursively
+        """
         try:
             logger.info(f"Processing sitemap: {url}")
             response = requests.get(url)
@@ -624,6 +768,20 @@ class URLProcessor(FileProcessor):
             return []
 
     def preview_url(self, url: str) -> str:
+        """Generate a markdown preview of a webpage's content.
+
+        Converts the webpage content at the given URL into markdown format using
+        the document converter.
+
+        Args:
+            url (str): The URL of the webpage to preview
+
+        Returns:
+            str: Markdown representation of the webpage content
+
+        Raises:
+            Exception: If the URL cannot be accessed or content cannot be converted
+        """
         try:
             result = self.converter.convert(url)
             return result.document.export_to_markdown()
@@ -632,9 +790,17 @@ class URLProcessor(FileProcessor):
 
 
 class GitProcessor(FileProcessor):
-    """Processor for Git repositories"""
+    """Processor for Git repositories."""
 
     def can_process(self, file_path: Union[str, Path]) -> bool:
+        """Check if this processor can handle the given Git repository.
+
+        Args:
+            file_path: Path or URL to Git repository
+
+        Returns:
+            bool: True if repository can be processed, False otherwise
+        """
         path_str = str(file_path)
         return (
             path_str.endswith(".git")
@@ -643,6 +809,14 @@ class GitProcessor(FileProcessor):
         )
 
     def validate_git_url(self, url: str) -> bool:
+        """Validate if a URL points to a valid Git repository.
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            bool: True if URL is valid Git repository, False otherwise
+        """
         git_patterns = [
             r"https?://github\.com/[\w-]+/[\w-]+(?:\.git)?/?$",
             r"git@github\.com:[\w-]+/[\w-]+(?:\.git)?/?$",
@@ -650,6 +824,14 @@ class GitProcessor(FileProcessor):
         return any(re.match(pattern, url) for pattern in git_patterns)
 
     def process(self, file_path: Union[str, Path]) -> ProcessingResult:
+        """Process a Git repository.
+
+        Args:
+            file_path: Path or URL to Git repository
+
+        Returns:
+            ProcessingResult: Results of repository processing
+        """
         if not self.options:
             return ProcessingResult.error("No processing options set")
 
@@ -658,8 +840,6 @@ class GitProcessor(FileProcessor):
             return ProcessingResult.error(f"Invalid Git repository URL: {repo_url}")
 
         try:
-            from git import Repo, GitCommandError
-
             # Clone repository
             repo = Repo.clone_from(repo_url, self.options.output_dir)
             if not repo.git_dir:
@@ -678,9 +858,29 @@ class GitProcessor(FileProcessor):
 
 
 class DocumentProcessor:
-    """Main class coordinating document processing workflow"""
+    """Main class coordinating document processing workflow.
+
+    This class serves as the primary coordinator for document processing operations,
+    managing the initialization and execution of various document processors and storage
+    handlers. It supports processing of multiple document types including PDFs, URLs,
+    and Git repositories.
+
+    Attributes:
+        engine (ProcessingEngine):
+            The main processing enginethat coordinates file processing
+        storage_handler (Optional[StorageHandler]):
+            Handler for storing processed documents
+    """
 
     def __init__(self):
+        """Initialize the DocumentProcessor with default processors.
+
+        Creates a new ProcessingEngine instance
+        and registers the default set of processors
+        (PDF, URL, and Git).
+        The storage handler is initially set to None and must be
+        initialized via the initialize() method before processing can begin.
+        """
         self.engine = ProcessingEngine()
         self.storage_handler: Optional[StorageHandler] = None
 
@@ -690,7 +890,19 @@ class DocumentProcessor:
         self.engine.register_processor(GitProcessor())
 
     def initialize(self, options: ProcessingOptions) -> None:
-        """Initialize processor with options"""
+        """Initialize the processor with the specified options.
+
+        Sets up the processing engine and storage handler
+        with the provided configuration options.
+        This method must be called before any processing can occur.
+
+        Args:
+            options (ProcessingOptions):
+                Configuration options for processing and storage
+
+        Raises:
+            RuntimeError: If initialization fails for any reason
+        """
         try:
             self.engine.set_options(options)
             self.storage_handler = StorageHandler(options)
@@ -700,7 +912,28 @@ class DocumentProcessor:
             raise RuntimeError(f"Failed to initialize processor: {str(e)}")
 
     def process(self, input_path: Union[str, Path]) -> Dict[str, Any]:
-        """Process input and return results"""
+        """Process the input path and return processing results.
+
+        Processes a single input path which can be a file, directory, or URL. The method
+        coordinates the processing workflow, handles storage (if not in preview mode),
+        and generates a summary of the processing results.
+
+        Args:
+            input_path (Union[str, Path]):
+                Path to the input to process. Can be a file path,
+                directory path, or URL
+
+        Returns:
+            Dict[str, Any]: A dictionary containing processing results including:
+                - total_files: Total number of files processed
+                - successful_files: Number of successfully processed files
+                - failed_files: Number of files that failed processing
+                - errors: List of error messages from failed processing attempts
+                - total_chunks: (If stored) Number of chunks stored in the database
+
+        Raises:
+            RuntimeError: If process is called before initialization
+        """
         if not self.storage_handler:
             logger.error("Attempted to process before initialization")
             raise RuntimeError("Processor not initialized")
@@ -724,7 +957,22 @@ class DocumentProcessor:
         return summary
 
     def _summarize_processing(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Create summary of processing results"""
+        """Create a summary of processing results.
+
+        Analyzes a list of ProcessingResult objects and generates a summary dictionary
+        containing counts of successful and failed operations,
+        along with any error messages.
+
+        Args:
+            results (List[ProcessingResult]): List of processing results to summarize
+
+        Returns:
+            Dict[str, Any]: A dictionary containing:
+                - total_files: Total number of files processed
+                - successful_files: Number of successfully processed files
+                - failed_files: Number of files that failed processing
+                - errors: List of error messages from failed operations
+        """
         successful = [r for r in results if r.success]
         failed = [r for r in results if not r.success]
 
@@ -737,7 +985,11 @@ class DocumentProcessor:
 
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create command line argument parser"""
+    """Create and configure the command line argument parser.
+
+    Returns:
+        argparse.ArgumentParser: Configured argument parser
+    """
     parser = argparse.ArgumentParser(
         description="Document Processing and Storage System"
     )
@@ -800,7 +1052,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Main entry point"""
+    """Execute the main program logic and handle command-line processing."""
     try:
         # Parse arguments
         parser = create_parser()

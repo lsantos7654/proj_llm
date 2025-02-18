@@ -1,9 +1,11 @@
 import argparse
-from pathlib import Path
-from docling.document_converter import DocumentConverter
-from utils.sitemap import get_sitemap_urls
-import sys
 import json
+import sys
+from pathlib import Path
+
+from docling.document_converter import DocumentConverter
+
+from utils.sitemap import get_sitemap_urls
 
 
 class DocumentConverterCLI:

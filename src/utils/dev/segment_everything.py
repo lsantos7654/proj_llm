@@ -1,10 +1,15 @@
-import torch
-from transformers import DetrImageProcessor, TableTransformerForObjectDetection
-from transformers import AutoImageProcessor, AutoModelForObjectDetection
-from PIL import Image
 import argparse
 import os
+
+import torch
 from pdf2image import convert_from_path
+from PIL import Image
+from transformers import (
+    AutoImageProcessor,
+    AutoModelForObjectDetection,
+    DetrImageProcessor,
+    TableTransformerForObjectDetection,
+)
 
 
 def detect_document_elements(image, output_dir, confidence_threshold=0.7):

@@ -1,7 +1,9 @@
-import streamlit as st
+"""Streamlit chat interface for document Q&A using LanceDB and OpenAI."""
+
 import lancedb
-from openai import OpenAI
+import streamlit as st
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -67,13 +69,14 @@ def get_chat_response(messages, context: str) -> str:
     Returns:
         str: Model's response
     """
-    system_prompt = f"""You are a helpful assistant that answers questions based on the provided context.
-    Use only the information from the context to answer questions. If you're unsure or the context
-    doesn't contain the relevant information, say so.
-    
-    Context:
-    {context}
-    """
+    system_prompt = f"""You are a helpful assistant that answers questions based on the
+        provided context. Use only the information from the context to answer questions.
+        If you're unsure or the context doesn't contain the relevant information,
+        say so.
+
+        Context:
+        {context}
+        """
 
     messages_with_context = [{"role": "system", "content": system_prompt}, *messages]
 
@@ -159,19 +162,20 @@ if prompt := st.chat_input("Ask a question about the document"):
             title = metadata.get("Title", "Untitled section")
             summary = metadata.get("Summary", "")
 
-            st.markdown(
-                f"""
+            summary_div = (
+                f'<div class="metadata">Summary: {summary}</div>' if summary else ""
+            )
+            html_content = f"""
                 <div class="search-result">
                     <details>
                         <summary>{source}</summary>
                         <div class="metadata">Title: {title}</div>
-                        {f'<div class="metadata">Summary: {summary}</div>' if summary else ''}
+                        {summary_div}
                         <div style="margin-top: 8px;">{text}</div>
                     </details>
                 </div>
-            """,
-                unsafe_allow_html=True,
-            )
+            """
+            st.markdown(html_content, unsafe_allow_html=True)
 
     # Display assistant response first
     with st.chat_message("assistant"):
