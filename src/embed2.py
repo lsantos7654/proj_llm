@@ -1,30 +1,31 @@
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Union
-from pathlib import Path
-import logging
-from enum import Enum, auto
-from pathlib import Path
-from numpy import result_type
-import requests
-from xml.etree import ElementTree
+# Standard library imports
+import sys
 import re
 import json
-from utils.pdf_spliter import split_pdf_vertically
-from utils.segment_tables import process_image, process_pdf
-from docling.document_converter import DocumentConverter
-from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
-from utils.tokenizer import OpenAITokenizerWrapper
-from typing import List, Dict, Any, Optional, Union
+import logging
+import argparse
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
+from typing import List, Dict, Any, Optional, Union
+from xml.etree import ElementTree
+
+# Third-party imports
+import requests
 import lancedb
+from openai import OpenAI
+from dotenv import load_dotenv
 from lancedb.pydantic import LanceModel, Vector
 from lancedb.table import Table
 from lancedb.embeddings import get_registry
-from openai import OpenAI
-from dotenv import load_dotenv
-import argparse
-import sys
+
+# Local/application imports
+from utils.pdf_spliter import split_pdf_vertically
+from utils.segment_tables import process_image, process_pdf
+from utils.tokenizer import OpenAITokenizerWrapper
+from docling.document_converter import DocumentConverter
+from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 
 
 load_dotenv()
