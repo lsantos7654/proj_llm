@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -12,22 +13,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from xml.etree import ElementTree
 
-import lancedb
 import requests
-from docling.document_converter import DocumentConverter
-from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+import weaviate
 from dotenv import load_dotenv
 from git import Repo
-from lancedb.embeddings import get_registry
-from lancedb.pydantic import LanceModel, Vector
-from lancedb.table import Table
 from openai import OpenAI
+from weaviate.util import generate_uuid5
 
 from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import extract_table_from_pdf
 from utils.tokenizer import OpenAITokenizerWrapper
 
 load_dotenv()
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=ResourceWarning)
+from docling.document_converter import DocumentConverter
+from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(
@@ -54,28 +56,6 @@ class ProcessingOptions:
     db_path: Path = Path("data/lancedb")
     table_name: str = "docling"
     output_dir: Path = Path("output")
-
-
-# Get the OpenAI embedding function
-embedding_func = get_registry().get("openai").create(name="text-embedding-3-large")
-
-
-class ChunkMetadata(LanceModel):
-    """Schema for chunk metadata."""
-
-    chunk_number: Optional[int]
-    source_id: Optional[str]
-    source_type: Optional[str]
-    summary: Optional[str]
-    title: Optional[str]
-
-
-class Chunks(LanceModel):
-    """Schema for document chunks with embeddings."""
-
-    text: str = embedding_func.SourceField()
-    vector: Vector(embedding_func.ndims()) = embedding_func.VectorField()
-    metadata: ChunkMetadata
 
 
 class ProcessingResult:
@@ -153,92 +133,84 @@ class FileProcessor(ABC):
         self.options = options
 
 
-class StorageManager:
-    """Manages document storage, processing, and retrieval in LanceDB.
+class WeaviateSchema:
+    def __init__(self, client):
+        self.client = client
 
-    This class handles all storage operations including:
-    - Database connection and table management
-    - Document chunk processing and metadata enrichment
-    - Storage of processed documents with embeddings
-    - Title and summary generation using OpenAI
+    def create_schema(self):
+        class_obj = {
+            "class": "DocumentChunk",
+            "vectorizer": "text2vec-openai",
+            "vectorIndexConfig": {"distance": "cosine"},
+            "properties": [
+                {
+                    "name": "text",
+                    "dataType": ["text"],
+                    "vectorizer": "text2vec-openai",
+                },
+                {
+                    "name": "title",
+                    "dataType": ["text"],
+                    "vectorizer": "text2vec-openai",
+                },
+                {
+                    "name": "summary",
+                    "dataType": ["text"],
+                    "vectorizer": "text2vec-openai",
+                },
+                {
+                    "name": "sourceId",
+                    "dataType": ["string"],
+                },
+                {
+                    "name": "sourceType",
+                    "dataType": ["string"],
+                },
+                {
+                    "name": "chunkNumber",
+                    "dataType": ["int"],
+                },
+            ],
+        }
 
-    Attributes:
-        db: LanceDB database connection
-        client: OpenAI client for generating titles/summaries
-        table: Current LanceDB table
-        options: Processing configuration options
-    """
+        self.client.schema.create_class(class_obj)
+
+
+class WeaviateStorageManager:
+    """Manages document storage and retrieval in Weaviate."""
 
     def __init__(self, options: ProcessingOptions):
-        """Initialize storage manager with processing options.
-
-        Args:
-            options: ProcessingOptions containing db_path, table_name, and processing mode
-        """
+        """Initialize storage manager with processing options."""
         self.options = options
-        self.db = lancedb.connect(str(options.db_path))
-        self.client = OpenAI()
-        self.table = None
+        self.client = weaviate.Client(
+            url="http://localhost:8080",  # Update with your Weaviate instance URL
+        )
+        self.openai_client = OpenAI()
         self.initialize_storage()
 
     def initialize_storage(self) -> None:
-        """Initialize LanceDB storage and create/get the specified table."""
+        """Initialize Weaviate storage and create schema if needed."""
         try:
-            logger.debug("Starting storage initialization")
-            self.table = self.create_or_get_table(
-                self.options.table_name, self.options.mode
-            )
-            if (
-                not hasattr(self.table, "name")
-                or self.table.name != self.options.table_name
-            ):
-                logger.error(f"Table validation failed - table object: {self.table}")
-                raise RuntimeError("Invalid table object returned")
+            schema = WeaviateSchema(self.client)
 
-            logger.debug(
-                f"Storage initialized successfully with table: {self.table.name}"
+            # Check if schema exists
+            existing_schema = self.client.schema.get()
+            schema_exists = (
+                any(c["class"] == "DocumentChunk" for c in existing_schema["classes"])
+                if existing_schema.get("classes")
+                else False
             )
+
+            if not schema_exists or self.options.mode == ProcessingMode.OVERWRITE:
+                if schema_exists:
+                    self.client.schema.delete_class("DocumentChunk")
+                schema.create_schema()
+
+            logger.debug("Storage initialized successfully")
 
         except Exception as e:
             logger.error(f"Storage initialization failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"Failed to initialize storage: {str(e)}")
-
-    def create_or_get_table(self, table_name: str, mode: ProcessingMode) -> Table:
-        """Create a new table or get existing one based on mode."""
-        try:
-            logger.debug(
-                f"Entering create_or_get_table with table_name={table_name}, mode={mode}"
-            )
-            exists = table_name in self.db.table_names()
-
-            if mode == ProcessingMode.APPEND and exists:
-                logger.info(f"Opening existing table: {table_name}")
-                try:
-                    return self.db.open_table(table_name)
-                except Exception as e:
-                    logger.error(f"Failed to open existing table: {str(e)}")
-                    raise
-            else:
-                logger.info(f"Creating new table: {table_name}")
-                try:
-                    return self.db.create_table(
-                        name=table_name,
-                        schema=Chunks,
-                        mode=(
-                            "overwrite"
-                            if mode == ProcessingMode.OVERWRITE
-                            else "create"
-                        ),
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to create table: {str(e)}")
-                    raise
-
-        except Exception as e:
-            logger.error(
-                f"Detailed error creating/getting table: {str(e)}", exc_info=True
-            )
-            raise RuntimeError(f"Failed to create/get table: {str(e)}")
 
     def _generate_title_and_summary(self, text: str, source_id: str) -> Dict[str, str]:
         """Generate title and summary for a document chunk using OpenAI's GPT model."""
@@ -254,7 +226,7 @@ class StorageManager:
         )
 
         try:
-            response = self.client.chat.completions.create(
+            response = self.openai_client.chat.completions.create(
                 model="gpt-4-turbo-preview",
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -279,8 +251,8 @@ class StorageManager:
     def process_chunks(
         self, chunks: List[Any], metadata: Optional[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """Process document chunks into storable format with enhanced metadata."""
-        processed_chunks: List[Dict[str, Any]] = []
+        """Process document chunks into storable format."""
+        processed_chunks = []
 
         for i, chunk in enumerate(chunks):
             try:
@@ -293,16 +265,13 @@ class StorageManager:
 
                 chunk_dict = {
                     "text": content,
-                    "metadata": {
-                        "source_type": source_type,
-                        "source_id": filename,
-                        "chunk_number": i,
-                        "title": generated_data.get("title"),
-                        "summary": generated_data.get("summary"),
-                    },
+                    "title": generated_data.get("title", ""),
+                    "summary": generated_data.get("summary", ""),
+                    "sourceId": filename,
+                    "sourceType": source_type,
+                    "chunkNumber": i,
                 }
                 processed_chunks.append(chunk_dict)
-                logger.info(f"Processed chunk {i} from {filename}")
 
             except Exception as e:
                 logger.error(f"Error processing chunk {i}: {str(e)}")
@@ -318,7 +287,7 @@ class StorageManager:
             return None
 
     def store_results(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Store processing results in LanceDB."""
+        """Store processing results in Weaviate."""
         successful_stores = 0
         failed_stores = 0
         total_chunks = 0
@@ -333,10 +302,24 @@ class StorageManager:
                     chunks = self.process_chunks(
                         self._get_chunks_for_file(file_path), result.metadata
                     )
-                    self.table.add(chunks)
-                    total_chunks += len(chunks)
+
+                    # Store chunks in Weaviate
+                    for chunk in chunks:
+                        try:
+                            uuid = generate_uuid5(
+                                chunk["sourceId"], chunk["chunkNumber"]
+                            )
+                            self.client.data_object.create(
+                                data_object=chunk, class_name="DocumentChunk", uuid=uuid
+                            )
+                            total_chunks += 1
+
+                        except Exception as e:
+                            logger.error(f"Error storing chunk: {str(e)}")
+                            failed_stores += 1
+                            continue
+
                     successful_stores += 1
-                    logger.debug(f"Successfully stored chunks for {file_path}")
 
             except Exception as e:
                 logger.error(f"Error storing result: {str(e)}")
@@ -816,7 +799,7 @@ class DocumentProcessor:
         initialized via the initialize() method before processing can begin.
         """
         self.engine = ProcessingEngine()
-        self.storage_manager: Optional[StorageManager] = None
+        self.storage_manager: Optional[WeaviateStorageManager] = None
 
         # Register processors
         self.engine.register_processor(PDFProcessor())
@@ -839,7 +822,7 @@ class DocumentProcessor:
         """
         try:
             self.engine.set_options(options)
-            self.storage_manager = StorageManager(options)
+            self.storage_manager = WeaviateStorageManager(options)
             logger.debug("Document processor fully initialized")
         except Exception as e:
             logger.error(f"Initialization failed: {str(e)}")
@@ -916,20 +899,212 @@ class DocumentProcessor:
         }
 
 
-def create_parser() -> argparse.ArgumentParser:
-    """Create and configure the command line argument parser.
+class DocumentSearcher:
+    """Handles document search operations using Weaviate."""
 
-    Returns:
-        argparse.ArgumentParser: Configured argument parser
-    """
+    def __init__(self, client: weaviate.Client):
+        self.client = client
+
+    def analyze_search_results(self, results: List[Dict[str, Any]], query: str):
+        """Analyze and print detailed information about search results."""
+        print("\nSearch Analysis:")
+        print(f"Query: '{query}'")
+
+        if not results:
+            print("No results to analyze")
+            return
+
+        # Get distances and scores, filtering out None values and converting to float
+        distances = [r.get("_additional", {}).get("distance") for r in results]
+        scores = [r.get("_additional", {}).get("score") for r in results]
+
+        print("\nMetrics distribution:")
+        if any(d is not None for d in distances):
+            valid_distances = [float(d) for d in distances if d is not None]
+            print(f"Min distance: {min(valid_distances):.4f}")
+            print(f"Max distance: {max(valid_distances):.4f}")
+            print(f"Average distance: {sum(valid_distances)/len(valid_distances):.4f}")
+
+        if any(s is not None for s in scores):
+            valid_scores = [float(s) for s in scores if s is not None]
+            try:
+                print(f"Min score: {min(valid_scores):.4f}")
+                print(f"Max score: {max(valid_scores):.4f}")
+                print(f"Average score: {sum(valid_scores)/len(valid_scores):.4f}")
+            except (ValueError, TypeError) as e:
+                print("Raw scores:", scores)
+                logger.error(f"Error processing scores: {e}")
+
+        print("\nField contribution analysis:")
+        for idx, result in enumerate(results[:3], 1):
+            print(f"\nResult #{idx}:")
+            distance = result.get("_additional", {}).get("distance")
+            score = result.get("_additional", {}).get("score")
+
+            if distance is not None:
+                try:
+                    print(f"Distance: {float(distance):.4f}")
+                except (ValueError, TypeError):
+                    print(f"Distance: {distance}")
+
+            if score is not None:
+                try:
+                    print(f"Score: {float(score):.4f}")
+                except (ValueError, TypeError):
+                    print(f"Score: {score}")
+
+            # Content analysis
+            title = result.get("title", "").lower()
+            text = result.get("text", "").lower()
+            summary = result.get("summary", "").lower()
+            query_lower = query.lower()
+
+            print(f"Title relevance: {'High' if query_lower in title else 'Low'}")
+            print(f"Text relevance: {'High' if query_lower in text else 'Low'}")
+            print(f"Summary relevance: {'High' if query_lower in summary else 'Low'}")
+
+    def semantic_search(
+        self, query: str, vector_field: str = "text", limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Perform pure vector similarity search."""
+        try:
+            # Log search parameters
+            logger.debug(
+                f"""
+                Search Configuration:
+                - Query: {query}
+                - Vector Field: {vector_field}
+                - Limit: {limit}
+                """
+            )
+
+            # Build query and capture it before execution
+            search_query = (
+                self.client.query.get(
+                    "DocumentChunk",
+                    [
+                        "text",
+                        "title",
+                        "summary",
+                        "sourceId",
+                        "sourceType",
+                        "chunkNumber",
+                    ],
+                )
+                .with_near_text(
+                    {
+                        "concepts": [query],
+                        "properties": [vector_field],
+                        "certainty": 0.7,  # Add certainty threshold
+                    }
+                )
+                .with_additional(["distance", "vector"])  # Add vector to response
+            )
+
+            # Log the raw GraphQL query
+            raw_query = search_query.build()
+            logger.debug(f"Generated GraphQL query:\n{raw_query}")
+
+            # Execute search
+            result = search_query.with_limit(limit).do()
+
+            if (
+                result
+                and "data" in result
+                and "Get" in result["data"]
+                and "DocumentChunk" in result["data"]["Get"]
+            ):
+                first_result = result["data"]["Get"]["DocumentChunk"][0]
+                if (
+                    "_additional" in first_result
+                    and "vector" in first_result["_additional"]
+                ):
+                    logger.debug(
+                        f"Vector dimensions: {len(first_result['_additional']['vector'])}"
+                    )
+                logger.debug("Distance calculation method: cosine")
+
+            return result["data"]["Get"]["DocumentChunk"]
+
+        except Exception as e:
+            logger.error(f"Search error: {str(e)}", exc_info=True)
+            return []
+
+    def hybrid_search(
+        self,
+        query: str,
+        vector_field: str = "text",
+        limit: int = 10,
+        alpha: float = 0.5,
+    ) -> List[Dict[str, Any]]:
+        """Perform hybrid search combining vector similarity and text matching."""
+        try:
+            # Log search parameters
+            logger.debug(
+                f"""
+                Hybrid Search Configuration:
+                - Query: {query}
+                - Vector Field: {vector_field}
+                - Limit: {limit}
+                - Alpha: {alpha}
+                """
+            )
+
+            result = (
+                self.client.query.get(
+                    "DocumentChunk",
+                    [
+                        "text",
+                        "title",
+                        "summary",
+                        "sourceId",
+                        "sourceType",
+                        "chunkNumber",
+                    ],
+                )
+                .with_hybrid(query=query, properties=[vector_field], alpha=alpha)
+                .with_additional(["score"])
+                .with_limit(limit)
+                .do()
+            )
+
+            return result["data"]["Get"]["DocumentChunk"]
+
+        except Exception as e:
+            logger.error(f"Search error: {str(e)}")
+            return []
+
+
+def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Document Processing and Storage System"
+        description="Document Processing and Search System"
     )
 
-    # Add subparsers for different modes
-    subparsers = parser.add_subparsers(dest="mode", help="Processing mode")
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # Common arguments for all modes
+    # Search command
+    search_parser = subparsers.add_parser("search", help="Search processed documents")
+    search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument(
+        "--mode", choices=["hybrid", "semantic"], default="hybrid", help="Search mode"
+    )
+    search_parser.add_argument(
+        "--field",
+        choices=["text", "title", "summary"],
+        default="text",
+        help="Field to search against",
+    )
+    search_parser.add_argument(
+        "--limit", type=int, default=10, help="Maximum number of results"
+    )
+
+    # Process command
+    process_parser = subparsers.add_parser("process", help="Process documents")
+    process_subparsers = process_parser.add_subparsers(
+        dest="mode", help="Processing mode"
+    )
+
+    # Common arguments for processing modes
     common_args = {
         "-o": {
             "dest": "output_dir",
@@ -938,13 +1113,13 @@ def create_parser() -> argparse.ArgumentParser:
         },
         "-db": {
             "dest": "db_path",
-            "default": "data/lancedb",
-            "help": "Path to LanceDB database",
+            "default": "data/weaviate",
+            "help": "Path to Weaviate database",
         },
         "-t": {
             "dest": "table_name",
-            "default": "docling",
-            "help": "Table name in database",
+            "default": "DocumentChunk",
+            "help": "Class name in Weaviate",
         },
         "--mode": {
             "choices": ["append", "overwrite"],
@@ -954,7 +1129,7 @@ def create_parser() -> argparse.ArgumentParser:
     }
 
     # PDF mode
-    pdf_parser = subparsers.add_parser("pdf", help="Process PDF documents")
+    pdf_parser = process_subparsers.add_parser("pdf", help="Process PDF documents")
     pdf_parser.add_argument("input", help="PDF file or directory")
     pdf_parser.add_argument("--extract-tables", action="store_true")
     pdf_parser.add_argument("--split-vertical", action="store_true")
@@ -962,14 +1137,14 @@ def create_parser() -> argparse.ArgumentParser:
         pdf_parser.add_argument(arg, **kwargs)
 
     # URL mode
-    url_parser = subparsers.add_parser("url", help="Process URLs and sitemaps")
+    url_parser = process_subparsers.add_parser("url", help="Process URLs and sitemaps")
     url_parser.add_argument("input", help="URL or sitemap URL")
     url_parser.add_argument("--sitemap-only", action="store_true")
     for arg, kwargs in common_args.items():
         url_parser.add_argument(arg, **kwargs)
 
     # General mode
-    general_parser = subparsers.add_parser(
+    general_parser = process_subparsers.add_parser(
         "general", help="Process any supported files"
     )
     general_parser.add_argument("input", help="Input file or directory")
@@ -980,7 +1155,6 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """Execute the main program logic and handle command-line processing."""
     try:
         # Parse arguments
         parser = create_parser()
@@ -991,44 +1165,75 @@ def main() -> int:
             level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
         )
 
-        # Create processing options
-        options = ProcessingOptions(
-            extract_tables=getattr(args, "extract_tables", False),
-            split_vertical=getattr(args, "split_vertical", False),
-            sitemap_only=getattr(args, "sitemap_only", False),
-            mode=(
-                ProcessingMode.OVERWRITE
-                if args.mode == "overwrite"
-                else ProcessingMode.APPEND
-            ),
-            db_path=Path(args.db_path),
-            table_name=args.table_name,
-            output_dir=Path(args.output_dir),
-        )
+        # Handle search command
+        if args.command == "search":
+            client = weaviate.Client("http://localhost:8080")
+            searcher = DocumentSearcher(client)
 
-        # Initialize processor
-        processor = DocumentProcessor()
-        processor.initialize(options)
+            if args.mode == "hybrid":  # Fixed from args.search_mode
+                results = searcher.hybrid_search(args.query, args.field, args.limit)
+                print("debug")
+                print(results[0].keys())
+                print(results[0].get("_additional"))
+            else:
+                results = searcher.semantic_search(args.query, args.field, args.limit)
 
-        # Process input
-        logger.info("Starting processing...")
-        results = processor.process(args.input)
+            # Print search results
+            print(f"\nSearch Results for: {args.query}")
+            for i, result in enumerate(results, 1):
+                print(
+                    f"\n{i}. Distance: {result.get('_additional', {}).get('distance', 'N/A')}"
+                )
+                print(f"Title: {result.get('title', 'No title')}")
+                print(f"Summary: {result.get('summary', 'No summary')}")
+                print(f"Source: {result.get('sourceId', 'No source')}")
+                print(f"Text Preview: {result.get('text', 'No text')[:150]}...")
+                print("-" * 80)
 
-        # Print results
-        print("\nProcessing Results:")
-        print(f"Total files: {results['total_files']}")
-        print(f"Successfully processed: {results['successful_files']}")
-        print(f"Failed: {results['failed_files']}")
+            # Add analysis of results
+            searcher.analyze_search_results(results, args.query)
+            return 0
 
-        if "total_chunks" in results:
-            print(f"Total chunks stored: {results['total_chunks']}")
+        # Handle processing commands
+        elif args.command == "process":
+            options = ProcessingOptions(
+                extract_tables=getattr(args, "extract_tables", False),
+                split_vertical=getattr(args, "split_vertical", False),
+                sitemap_only=getattr(args, "sitemap_only", False),
+                mode=(
+                    ProcessingMode.OVERWRITE
+                    if args.mode == "overwrite"
+                    else ProcessingMode.APPEND
+                ),
+                db_path=Path(args.db_path),
+                table_name=args.table_name,
+                output_dir=Path(args.output_dir),
+            )
 
-        if results["errors"]:
-            print("\nErrors encountered:")
-            for error in results["errors"]:
-                print(f"- {error}")
+            processor = DocumentProcessor()
+            processor.initialize(options)
 
-        return 0 if results["failed_files"] == 0 else 1
+            logger.info("Starting processing...")
+            results = processor.process(args.input)
+
+            print("\nProcessing Results:")
+            print(f"Total files: {results['total_files']}")
+            print(f"Successfully processed: {results['successful_files']}")
+            print(f"Failed: {results['failed_files']}")
+
+            if "total_chunks" in results:
+                print(f"Total chunks stored: {results['total_chunks']}")
+
+            if results["errors"]:
+                print("\nErrors encountered:")
+                for error in results["errors"]:
+                    print(f"- {error}")
+
+            return 0 if results["failed_files"] == 0 else 1
+
+        else:
+            parser.print_help()
+            return 1
 
     except KeyboardInterrupt:
         logger.info("Processing interrupted by user")
@@ -1036,6 +1241,10 @@ def main() -> int:
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 
 if __name__ == "__main__":

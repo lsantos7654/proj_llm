@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from typing import Tuple
 
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 
 def split_pdf_vertically(input_path: Path, output_dir: Path) -> Tuple[Path, Path]:

@@ -1,7 +1,7 @@
-"""Streamlit chat interface for document Q&A using LanceDB and OpenAI."""
+"""Streamlit chat interface for document Q&A using Weaviate and OpenAI."""
 
-import lancedb
 import streamlit as st
+import weaviate
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -12,40 +12,54 @@ load_dotenv()
 client = OpenAI()
 
 
-# Initialize LanceDB connection
+# Initialize Weaviate connection
 @st.cache_resource
 def init_db():
     """Initialize database connection.
 
     Returns:
-        LanceDB table object
+        Weaviate client object
     """
-    # db = lancedb.connect("data/lancedb")
-    db = lancedb.connect("data/testdb")
-    return db.open_table("docling")
+    return weaviate.Client("http://localhost:8080")
 
 
-def get_context(query: str, table, num_results: int = 5) -> str:
+def get_context(query: str, client, num_results: int = 5) -> str:
     """Search the database for relevant context.
 
     Args:
         query: User's question
-        table: LanceDB table object
+        client: Weaviate client object
         num_results: Number of results to return
 
     Returns:
         str: Concatenated context from relevant chunks with source information
     """
-    results = table.search(query).metric("cosine").limit(num_results).to_pandas()
+    results = (
+        client.query.get(
+            "DocumentChunk",
+            [
+                "text",
+                "title",
+                "summary",
+                "sourceId",
+                "sourceType",
+            ],
+        )
+        .with_hybrid(query=query, properties=["text"], alpha=0.5)
+        .with_additional(["score"])
+        .with_limit(num_results)
+        .do()
+    )
+
     contexts = []
 
-    for _, row in results.iterrows():
+    for chunk in results["data"]["Get"]["DocumentChunk"]:
         # Extract metadata
-        metadata = row["metadata"]
-        source_id = metadata.get("source_id", "Unknown source")
-        source_type = metadata.get("source_type", "Unknown type")
-        title = metadata.get("title", "Untitled section")
-        summary = metadata.get("summary", "")
+        source_id = chunk.get("sourceId", "Unknown source")
+        source_type = chunk.get("sourceType", "Unknown type")
+        title = chunk.get("title", "Untitled section")
+        summary = chunk.get("summary", "")
+        text = chunk.get("text", "")
 
         # Build source citation
         source_info = f"\nSource: {source_id} ({source_type})"
@@ -54,7 +68,7 @@ def get_context(query: str, table, num_results: int = 5) -> str:
         if summary:
             source_info += f"\nSummary: {summary}"
 
-        contexts.append(f"{row['text']}{source_info}")
+        contexts.append(f"{text}{source_info}")
 
     return "\n\n".join(contexts)
 
@@ -82,7 +96,7 @@ def get_chat_response(messages, context: str) -> str:
 
     # Create the streaming response
     stream = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4-turbo-preview",  # Updated to latest model
         messages=messages_with_context,
         temperature=0.7,
         stream=True,
@@ -101,7 +115,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # Initialize database connection
-table = init_db()
+weaviate_client = init_db()
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -119,7 +133,7 @@ if prompt := st.chat_input("Ask a question about the document"):
 
     # Get relevant context
     with st.status("Searching document...", expanded=False) as status:
-        context = get_context(prompt, table)
+        context = get_context(prompt, weaviate_client)
         st.markdown(
             """
             <style>
@@ -177,7 +191,7 @@ if prompt := st.chat_input("Ask a question about the document"):
             """
             st.markdown(html_content, unsafe_allow_html=True)
 
-    # Display assistant response first
+    # Display assistant response
     with st.chat_message("assistant"):
         # Get model response with streaming
         response = get_chat_response(st.session_state.messages, context)
