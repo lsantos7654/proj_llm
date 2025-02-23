@@ -1,121 +1,97 @@
-"""Streamlit chat interface for document Q&A using Weaviate and OpenAI."""
-
 import streamlit as st
-import weaviate
-from dotenv import load_dotenv
-from openai import OpenAI
-
-# Load environment variables
-load_dotenv()
-
-# Initialize OpenAI client
-client = OpenAI()
+from lightrag import LightRAG, QueryParam
+from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
+from lightrag.utils import EmbeddingFunc
+import streamlit.components.v1 as components
+from pyvis.network import Network
+import networkx as nx
+import tempfile
 
 
-# Initialize Weaviate connection
-@st.cache_resource
-def init_db():
-    """Initialize database connection.
-
-    Returns:
-        Weaviate client object
-    """
-    return weaviate.Client("http://localhost:8080")
-
-
-def get_context(query: str, client, num_results: int = 5) -> str:
-    """Search the database for relevant context.
-
-    Args:
-        query: User's question
-        client: Weaviate client object
-        num_results: Number of results to return
-
-    Returns:
-        str: Concatenated context from relevant chunks with source information
-    """
-    results = (
-        client.query.get(
-            "DocumentChunk",
-            [
-                "text",
-                "title",
-                "summary",
-                "sourceId",
-                "sourceType",
-            ],
-        )
-        .with_hybrid(query=query, properties=["text"], alpha=0.5)
-        .with_additional(["score"])
-        .with_limit(num_results)
-        .do()
+# Initialize LightRAG with proper embedding configuration
+# @st.cache_resource
+def init_rag():
+    return LightRAG(
+        working_dir="lightrag_cache",
+        embedding_func=EmbeddingFunc(
+            embedding_dim=1536, max_token_size=8192, func=openai_embed
+        ),
+        llm_model_func=gpt_4o_mini_complete,
     )
 
-    contexts = []
 
-    for chunk in results["data"]["Get"]["DocumentChunk"]:
-        # Extract metadata
-        source_id = chunk.get("sourceId", "Unknown source")
-        source_type = chunk.get("sourceType", "Unknown type")
-        title = chunk.get("title", "Untitled section")
-        summary = chunk.get("summary", "")
-        text = chunk.get("text", "")
+def visualize_graph(G):
+    """Create an interactive visualization of the knowledge graph."""
+    net = Network(notebook=True, height="500px", width="100%")
+    net.from_nx(G)
 
-        # Build source citation
-        source_info = f"\nSource: {source_id} ({source_type})"
-        if title:
-            source_info += f"\nTitle: {title}"
-        if summary:
-            source_info += f"\nSummary: {summary}"
-
-        contexts.append(f"{text}{source_info}")
-
-    return "\n\n".join(contexts)
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".html") as f:
+        net.save_graph(f.name)
+        return f.name
 
 
-def get_chat_response(messages, context: str) -> str:
-    """Get streaming response from OpenAI API.
-
-    Args:
-        messages: Chat history
-        context: Retrieved context from database
-
-    Returns:
-        str: Model's response
+# CSS for styling
+st.markdown(
     """
-    system_prompt = f"""You are a helpful assistant that answers questions based on the
-        provided context. Use only the information from the context to answer questions.
-        If you're unsure or the context doesn't contain the relevant information,
-        say so.
-
-        Context:
-        {context}
-        """
-
-    messages_with_context = [{"role": "system", "content": system_prompt}, *messages]
-
-    # Create the streaming response
-    stream = client.chat.completions.create(
-        model="gpt-4-turbo-preview",  # Updated to latest model
-        messages=messages_with_context,
-        temperature=0.7,
-        stream=True,
-    )
-
-    # Use Streamlit's built-in streaming capability
-    response = st.write_stream(stream)
-    return response
-
+    <style>
+    .search-result {
+        margin: 10px 0;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+    .search-result summary {
+        font-weight: 600;
+        color: #1e88e5;
+        cursor: pointer;
+    }
+    .search-result .metadata {
+        color: #666;
+        font-size: 0.9em;
+        margin: 5px 0;
+    }
+    .edge-info {
+        margin-top: 10px;
+        padding-left: 10px;
+        border-left: 3px solid #1e88e5;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 
 # Initialize Streamlit app
-st.title("📚 Document Q&A")
+st.title("📚 Document Q&A with Knowledge Graph")
+
+# Initialize RAG
+rag = init_rag()
+
+# Sidebar for controls
+with st.sidebar:
+    st.header("Controls")
+
+    # Search mode selection
+    search_mode = st.selectbox(
+        "Search Mode",
+        ["hybrid", "local", "global", "naive", "mix"],
+        help="Select the search mode for query processing",
+    )
+
+    # Show graph visualization
+    if st.button("Show Knowledge Graph"):
+        with st.spinner("Generating graph visualization..."):
+            G = nx.read_graphml(
+                f"{rag.working_dir}/graph_chunk_entity_relation.graphml"
+            )
+            html_path = visualize_graph(G)
+            with open(html_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+            components.html(html_content, height=600)
 
 # Initialize session state for chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# Initialize database connection
-weaviate_client = init_db()
 
 # Display chat messages
 for message in st.session_state.messages:
@@ -131,70 +107,32 @@ if prompt := st.chat_input("Ask a question about the document"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Get relevant context
+    response = rag.query(
+        prompt,
+        param=QueryParam(mode=search_mode, response_type="Multiple Paragraphs"),
+    )
+    # Get context first
     with st.status("Searching document...", expanded=False) as status:
-        context = get_context(prompt, weaviate_client)
-        st.markdown(
-            """
-            <style>
-            .search-result {
-                margin: 10px 0;
-                padding: 10px;
-                border-radius: 4px;
-                background-color: #f0f2f6;
-            }
-            .search-result summary {
-                cursor: pointer;
-                color: #0f52ba;
-                font-weight: 500;
-            }
-            .search-result summary:hover {
-                color: #1e90ff;
-            }
-            .metadata {
-                font-size: 0.9em;
-                color: #666;
-                font-style: italic;
-            }
-            </style>
-        """,
-            unsafe_allow_html=True,
-        )
+        try:
+            st.write("Raw context_result content:")
+            st.code(response)
 
-        st.write("Found relevant sections:")
-        for chunk in context.split("\n\n"):
-            # Split into text and metadata parts
-            parts = chunk.split("\n")
-            text = parts[0]
-            metadata = {
-                line.split(": ")[0]: line.split(": ")[1]
-                for line in parts[1:]
-                if ": " in line
-            }
-
-            source = metadata.get("Source", "Unknown source")
-            title = metadata.get("Title", "Untitled section")
-            summary = metadata.get("Summary", "")
-
-            summary_div = (
-                f'<div class="metadata">Summary: {summary}</div>' if summary else ""
-            )
-            html_content = f"""
-                <div class="search-result">
-                    <details>
-                        <summary>{source}</summary>
-                        <div class="metadata">Title: {title}</div>
-                        {summary_div}
-                        <div style="margin-top: 8px;">{text}</div>
-                    </details>
-                </div>
-            """
-            st.markdown(html_content, unsafe_allow_html=True)
-
-    # Display assistant response
+        except Exception as e:
+            st.error(f"Error processing query: {str(e)}")
     with st.chat_message("assistant"):
-        # Get model response with streaming
-        response = get_chat_response(st.session_state.messages, context)
+        st.write(response)
 
     # Add assistant response to chat history
     st.session_state.messages.append({"role": "assistant", "content": response})
+
+    # Display debug information
+    with st.expander("Debug Information"):
+        st.write(f"Working Directory: {rag.working_dir}")
+        st.write(f"Current Search Mode: {search_mode}")
+        st.write("Context Result Structure:")
+        st.json(response)
+
+# Display basic debug info outside the chat input block
+with st.expander("System Information"):
+    st.write(f"Working Directory: {rag.working_dir}")
+    st.write(f"Current Search Mode: {search_mode}")
