@@ -67,7 +67,7 @@ jupyter-core==5.7.2
 kiwisolver==1.4.8
 latex2mathml==3.77.0
 lazy-loader==0.4
--e file:///Users/santos/projects/proj_llm/external/LightRAG
+lightrag-hku==1.1.7
 llvmlite==0.44.0
 lxml==5.3.1
 markdown-it-py==3.0.0
@@ -172,6 +172,7 @@ typing-extensions==4.12.2
 tzdata==2025.1
 umap-learn==0.5.7
 urllib3==2.3.0
+watchdog==6.0.0
 wcwidth==0.2.13
 webencodings==0.5.1
 wrapt==1.17.2

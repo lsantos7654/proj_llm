@@ -107,19 +107,23 @@ if prompt := st.chat_input("Ask a question about the document"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    response = rag.query(
-        prompt,
-        param=QueryParam(mode=search_mode, response_type="Multiple Paragraphs"),
-    )
-    # Get context first
     with st.status("Searching document...", expanded=False) as status:
-        try:
-            st.write("Raw context_result content:")
-            st.code(response)
-
-        except Exception as e:
-            st.error(f"Error processing query: {str(e)}")
+        context = rag.query(
+            prompt,
+            param=QueryParam(
+                mode=search_mode,
+                response_type="Multiple Paragraphs",
+                only_need_context=True,
+                top_k=5,
+            ),
+        )
+        st.write("Raw context_result content:")
+        st.code(context)
     with st.chat_message("assistant"):
+        response = rag.query(
+            prompt,
+            param=QueryParam(mode=search_mode, response_type="Multiple Paragraphs"),
+        )
         st.write(response)
 
     # Add assistant response to chat history
