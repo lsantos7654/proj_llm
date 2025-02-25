@@ -3,10 +3,12 @@
 import argparse
 import logging
 import re
+import os
 import sys
-import warnings
+import json
+from datetime import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from xml.etree import ElementTree
@@ -22,12 +24,12 @@ from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import extract_table_from_pdf
 from utils.tokenizer import OpenAITokenizerWrapper
 
-load_dotenv()
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=ResourceWarning)
+# warnings.filterwarnings("ignore", category=DeprecationWarning)
+# warnings.filterwarnings("ignore", category=ResourceWarning)
 from docling.document_converter import DocumentConverter
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+
+load_dotenv()
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(
@@ -40,14 +42,26 @@ logger = logging.getLogger(__name__)
 class ProcessingOptions:
     """Configuration options for file processing."""
 
+    # Processing flags
     extract_tables: bool = False
     split_vertical: bool = False
     sitemap_only: bool = False
-    db_path: Path = Path("data/testdb")
-    table_name: str = "docling"
+
+    # Path configurations
+    db_path: Path = Path("data/default_db")
     output_dir: Path = Path("output")
+    table_name: str = "docling"
+
+    # Model parameters
     embedding_dim: int = 1536
     max_token_size: int = 8192
+
+    # Search parameters
+    search_modes: List[str] = field(
+        default_factory=lambda: ["naive", "local", "global", "hybrid", "mix"]
+    )
+    default_search_mode: str = "hybrid"
+    default_result_limit: int = 10
 
 
 class ProcessingResult:
@@ -142,6 +156,18 @@ class LightRAGStorageManager:
             addon_params={"insert_batch_size": 20},
         )
 
+        # Create output directory for chunks if it doesn't exist
+        self.chunks_dir = options.output_dir / "chunks"
+        os.makedirs(self.chunks_dir, exist_ok=True)
+
+        # Set up a file for summary information
+        self.summary_file = options.output_dir / "chunks_summary.json"
+        self.chunk_summary = {
+            "timestamp": datetime.now().isoformat(),
+            "files": {},
+            "total_chunks": 0,
+        }
+
     def process_chunks(self, chunks: List[Any]) -> List[str]:
         """Process document chunks into text content for LightRAG insertion."""
         processed_chunks = []
@@ -156,11 +182,45 @@ class LightRAGStorageManager:
 
         return processed_chunks
 
+    def save_chunks_to_file(
+        self, file_path: Union[str, Path], processed_chunks: List[str]
+    ) -> str:
+        """Save processed chunks to a file in the chunks directory.
+
+        Args:
+            file_path: Original file path that was chunked
+            processed_chunks: List of processed text chunks
+
+        Returns:
+            Path to the saved chunks file
+        """
+        # Create a filename based on the original file
+        original_name = Path(file_path).stem
+        safe_name = "".join(c if c.isalnum() else "_" for c in original_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = self.chunks_dir / f"{safe_name}_{timestamp}.json"
+
+        # Create a dictionary with metadata and chunks
+        chunks_data = {
+            "source_file": str(file_path),
+            "timestamp": datetime.now().isoformat(),
+            "num_chunks": len(processed_chunks),
+            "chunks": processed_chunks,
+        }
+
+        # Save to file
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(chunks_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Saved {len(processed_chunks)} chunks to {output_file}")
+        return str(output_file)
+
     def store_results(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Store processing results using LightRAG."""
+        """Store processing results using LightRAG and save chunks to files."""
         successful_stores = 0
         failed_stores = 0
         total_chunks = 0
+        saved_files = []
 
         for result in results:
             if not result.success:
@@ -175,13 +235,29 @@ class LightRAGStorageManager:
                     # Process chunks to get text content
                     processed_chunks = self.process_chunks(chunks)
 
+                    if not processed_chunks:
+                        logger.warning(f"No chunks produced for {file_path}")
+                        failed_stores += 1
+                        continue
+
+                    # Save chunks to file
+                    output_file = self.save_chunks_to_file(file_path, processed_chunks)
+                    saved_files.append(output_file)
+
+                    # Update summary information
+                    self.chunk_summary["files"][str(file_path)] = {
+                        "chunks_file": output_file,
+                        "num_chunks": len(processed_chunks),
+                    }
+                    self.chunk_summary["total_chunks"] += len(processed_chunks)
+
                     # Store chunks using LightRAG's batch insert
                     try:
                         self.rag.insert(processed_chunks)
                         total_chunks += len(processed_chunks)
                         successful_stores += 1
                     except Exception as e:
-                        logger.error(f"Error storing chunks: {str(e)}")
+                        logger.error(f"Error storing chunks in LightRAG: {str(e)}")
                         failed_stores += 1
                         continue
 
@@ -189,10 +265,20 @@ class LightRAGStorageManager:
                 logger.error(f"Error storing result: {str(e)}")
                 failed_stores += 1
 
+        # Save summary information
+        try:
+            with open(self.summary_file, "w", encoding="utf-8") as f:
+                json.dump(self.chunk_summary, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved chunks summary to {self.summary_file}")
+        except Exception as e:
+            logger.error(f"Error saving chunks summary: {str(e)}")
+
         return {
             "successful_stores": successful_stores,
             "failed_stores": failed_stores,
             "total_chunks": total_chunks,
+            "saved_files": saved_files,
+            "summary_file": str(self.summary_file),
         }
 
     def _get_chunks_for_file(self, file_path: Union[str, Path]) -> List[Any]:
@@ -746,6 +832,9 @@ class DocumentSearcher:
 
 
 def create_parser() -> argparse.ArgumentParser:
+    # Import ProcessingOptions defaults
+    default_options = ProcessingOptions()
+
     parser = argparse.ArgumentParser(
         description="Document Processing and Search System"
     )
@@ -757,12 +846,21 @@ def create_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("query", help="Search query")
     search_parser.add_argument(
         "--mode",
-        choices=["naive", "local", "global", "hybrid", "mix"],
-        default="hybrid",
+        choices=default_options.search_modes,
+        default=default_options.default_search_mode,
         help="Search mode",
     )
     search_parser.add_argument(
-        "--limit", type=int, default=10, help="Maximum number of results"
+        "--limit",
+        type=int,
+        default=default_options.default_result_limit,
+        help="Maximum number of results",
+    )
+    search_parser.add_argument(
+        "-db",
+        dest="db_path",
+        default=str(default_options.db_path),
+        help="Path to LightRAG database",
     )
 
     # Process command
@@ -775,12 +873,12 @@ def create_parser() -> argparse.ArgumentParser:
     common_args = {
         "-o": {
             "dest": "output_dir",
-            "default": "output",
+            "default": str(default_options.output_dir),
             "help": "Output directory for processed files",
         },
         "-db": {
             "dest": "db_path",
-            "default": "lightrag_cache",
+            "default": str(default_options.db_path),
             "help": "Path to LightRAG database",
         },
     }
@@ -816,11 +914,6 @@ def main() -> int:
         # Parse arguments
         parser = create_parser()
         args = parser.parse_args()
-
-        # Set up logging
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
 
         # Handle search command
         if args.command == "search":
