@@ -9,6 +9,13 @@ import tempfile
 import pandas as pd
 from io import StringIO
 
+# Set page config with sidebar initially collapsed
+st.set_page_config(
+    page_title="Document Q&A with Knowledge Graph",
+    page_icon="📚",
+    initial_sidebar_state="collapsed",
+)
+
 
 # Initialize LightRAG with proper embedding configuration
 # @st.cache_resource
@@ -216,27 +223,12 @@ st.markdown(
         color: white;
     }
     </style>
-    <style>
-        [data-testid="stSidebar"][aria-expanded="true"] {
-            display: none;
-        }
-        div[data-testid="stSidebarNav"] {
-            display: none;
-        }
-        button[kind="secondary"] {
-            display: none;
-        }
-    </style>
     """,
     unsafe_allow_html=True,
 )
 
 # Initialize Streamlit app
 st.title("📚 Document Q&A with Knowledge Graph")
-if st.button("Toggle Sidebar"):
-    st.session_state.sidebar_visible = not st.session_state.get(
-        "sidebar_visible", False
-    )
 
 # Initialize RAG
 rag = init_rag()
