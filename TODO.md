@@ -9,3 +9,6 @@
 
 MATCH (n)-[r]->(m)
 RETURN n, r, m LIMIT 300
+
+MATCH (n)
+DETACH DELETE n

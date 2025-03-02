@@ -6,6 +6,7 @@ import re
 import os
 import sys
 import json
+from tree_sitter import Language, Parser
 from datetime import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -24,8 +25,6 @@ from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import extract_table_from_pdf
 from utils.tokenizer import OpenAITokenizerWrapper
 
-# warnings.filterwarnings("ignore", category=DeprecationWarning)
-# warnings.filterwarnings("ignore", category=ResourceWarning)
 from docling.document_converter import DocumentConverter
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 
@@ -39,6 +38,13 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class CodeChunk:
+    text: str
+    metadata: Optional[Dict[str, Any]] = None
+    node_type: Optional[str] = None
+
+
+@dataclass
 class ProcessingOptions:
     """Configuration options for file processing."""
 
@@ -49,6 +55,7 @@ class ProcessingOptions:
 
     # Path configurations
     db_path: Path = Path("data/default_db")
+    lang_path: Path = Path("data/tree-sitter-parsers")
     output_dir: Path = Path("output")
     table_name: str = "docling"
 
@@ -137,6 +144,198 @@ class FileProcessor(ABC):
     def set_options(self, options: ProcessingOptions) -> None:
         """Set processing options."""
         self.options = options
+
+
+class TreeSitterChunker:
+    """Code chunker using Tree-sitter for language-aware parsing."""
+
+    def __init__(self, languages_dir: Union[str, Path]):
+        """Initialize Tree-sitter with language parsers.
+
+        Args:
+            languages_dir: Directory containing Tree-sitter language repositories
+            (parameter kept for compatibility but not used with the new API)
+        """
+        self.languages_dir = Path(languages_dir)
+        self.parser = Parser()
+        self.languages = {}
+
+        # Load available languages
+        self._load_languages()
+
+    def _load_languages(self):
+        """Load Tree-sitter language parsers using pre-compiled packages."""
+        # Dictionary to track import status
+        language_modules = {
+            "python": None,
+            "javascript": None,
+            "lua": None,
+            "typescript": None,
+        }
+
+        # Try to import each language module
+        for lang in language_modules.keys():
+            try:
+                module_name = f"tree_sitter_{lang}"
+                language_modules[lang] = __import__(module_name)
+                logger.info(f"Successfully imported {module_name}")
+            except ImportError:
+                logger.warning(
+                    f"Could not import {module_name}. Parser for {lang} will not be available."
+                )
+
+        # Initialize languages from successfully imported modules
+        try:
+            for lang, module in language_modules.items():
+                if module is not None:
+                    self.languages[lang] = Language(module.language())
+                    logger.info(f"Loaded Tree-sitter parser for {lang}")
+
+            if not self.languages:
+                logger.warning(
+                    "No Tree-sitter language parsers were loaded. Will use fallback chunking."
+                )
+            else:
+                logger.info(f"Loaded {len(self.languages)} Tree-sitter parsers")
+        except Exception as e:
+            logger.error(f"Error initializing Tree-sitter languages: {e}")
+
+    def get_language_for_file(self, file_path: Path) -> Optional[Language]:
+        """Get the appropriate language parser for a file."""
+        ext = file_path.suffix.lower()
+        if ext == ".py":
+            return self.languages.get("python")
+        elif ext == ".lua":
+            return self.languages.get("lua")
+        elif ext == ".js":
+            return self.languages.get("javascript")
+        elif ext == ".ts":
+            return self.languages.get("typescript")
+        # Add more mappings as needed
+        return None
+
+    def chunk_file(self, file_path: Path) -> List[CodeChunk]:
+        """Parse a code file and return meaningful chunks."""
+        try:
+            # Read file content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Get language for the file
+            language = self.get_language_for_file(file_path)
+            if not language:
+                logger.warning(f"No Tree-sitter parser available for {file_path}")
+                return self._fallback_chunking(file_path, content)
+
+            # Set language for the parser
+            self.parser.language = language
+
+            # Parse the file
+            tree = self.parser.parse(bytes(content, "utf-8"))
+
+            # Extract meaningful chunks based on the syntax tree
+            chunks = self._extract_chunks(tree.root_node, content, file_path)
+
+            # If no meaningful chunks were found, fall back to simpler chunking
+            if not chunks:
+                logger.warning(f"No meaningful chunks found for {file_path}")
+                return self._fallback_chunking(file_path, content)
+
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Error parsing {file_path} with Tree-sitter: {e}")
+            return self._fallback_chunking(file_path, content)
+
+    def _extract_chunks(
+        self, root_node, content: str, file_path: Path
+    ) -> List[CodeChunk]:
+        """Extract meaningful code chunks from a syntax tree."""
+        chunks = []
+
+        # Define nodes of interest based on language
+        if file_path.suffix.lower() == ".py":
+            nodes_of_interest = ["class_definition", "function_definition", "module"]
+        elif file_path.suffix.lower() == ".lua":
+            nodes_of_interest = [
+                "function_declaration",
+                "local_function",
+                "table_constructor",
+            ]
+        elif file_path.suffix.lower() in [".js", ".ts"]:
+            nodes_of_interest = [
+                "class_declaration",
+                "function_declaration",
+                "method_definition",
+                "arrow_function",
+            ]
+        else:
+            nodes_of_interest = []
+
+        # Process nodes of interest
+        def process_node(node):
+            if node.type in nodes_of_interest:
+                # Extract code for this node
+                start_byte = node.start_byte
+                end_byte = node.end_byte
+                node_text = content[start_byte:end_byte]
+
+                # Create a chunk
+                chunk = CodeChunk(
+                    text=node_text,
+                    metadata={
+                        "source": str(file_path),
+                        "start_line": node.start_point[0] + 1,
+                        "end_line": node.end_point[0] + 1,
+                        "type": node.type,
+                    },
+                    node_type=node.type,
+                )
+                chunks.append(chunk)
+
+            # Recurse for children
+            for child in node.children:
+                process_node(child)
+
+        # Start processing from the root
+        process_node(root_node)
+
+        # If we found module-level chunks, ensure we also have smaller chunks
+        if any(chunk.node_type == "module" for chunk in chunks):
+            chunks = [
+                chunk for chunk in chunks if chunk.node_type != "module"
+            ] or chunks
+
+        return chunks
+
+    def _fallback_chunking(self, file_path: Path, content: str) -> List[CodeChunk]:
+        """Simple line-based chunking as a fallback."""
+        logger.info(f"Using fallback chunking for {file_path}")
+        chunks = []
+        lines = content.split("\n")
+
+        # Split into chunks of max 100 lines
+        max_lines = 100
+        for i in range(0, len(lines), max_lines):
+            chunk_lines = lines[i : i + max_lines]
+            chunk_text = "\n".join(chunk_lines)
+
+            # Skip empty chunks
+            if not chunk_text.strip():
+                continue
+
+            chunk = CodeChunk(
+                text=chunk_text,
+                metadata={
+                    "source": str(file_path),
+                    "start_line": i + 1,
+                    "end_line": min(i + max_lines, len(lines)),
+                    "type": "fallback_chunk",
+                },
+            )
+            chunks.append(chunk)
+
+        return chunks
 
 
 class LightRAGStorageManager:
@@ -282,15 +481,49 @@ class LightRAGStorageManager:
         }
 
     def _get_chunks_for_file(self, file_path: Union[str, Path]) -> List[Any]:
-        """Generate document chunks from a file using HybridChunker."""
-        converter = DocumentConverter()
-        chunker = HybridChunker(
-            tokenizer=OpenAITokenizerWrapper(),
-            max_tokens=8191,
-            merge_peers=True,
-        )
+        """Generate document chunks from a file using appropriate chunking strategy."""
+        file_path = Path(file_path) if isinstance(file_path, str) else file_path
 
+        # Check if it's a code file
+        code_extensions = [
+            ".py",
+            ".lua",
+            ".js",
+            ".ts",
+            ".java",
+            ".c",
+            ".cpp",
+            ".h",
+            ".go",
+            ".rb",
+            ".php",
+        ]
+        is_code_file = file_path.suffix.lower() in code_extensions
+
+        if is_code_file:
+            # Use Tree-sitter for code files
+            try:
+                # Lazy-load/initialize the Tree-sitter chunker the first time it's needed
+                if not hasattr(self, "_tree_sitter_chunker"):
+                    languages_dir = Path(self.options.lang_path)
+                    self._tree_sitter_chunker = TreeSitterChunker(languages_dir)
+
+                # Chunk using Tree-sitter
+                code_chunks = self._tree_sitter_chunker.chunk_file(file_path)
+                return code_chunks
+            except Exception as e:
+                logger.error(f"Tree-sitter chunking failed for {file_path}: {e}")
+                # Fall back to standard chunking
+
+        # Use standard HybridChunker for non-code files or if Tree-sitter failed
         try:
+            converter = DocumentConverter()
+            chunker = HybridChunker(
+                tokenizer=OpenAITokenizerWrapper(),
+                max_tokens=8191,
+                merge_peers=True,
+            )
+
             result = converter.convert(file_path)
             chunks = list(chunker.chunk(dl_doc=result.document))
             return chunks
@@ -690,6 +923,76 @@ class GitProcessor(FileProcessor):
         ]
         return any(re.match(pattern, url) for pattern in git_patterns)
 
+    def _is_processable_file(self, file_path: Path) -> bool:
+        """Determine if a file can be processed based on its extension and other criteria.
+
+        Args:
+            file_path: Path to the file to check
+
+        Returns:
+            bool: True if the file can be processed, False otherwise
+        """
+        # Skip files in .git directory
+        if ".git" in file_path.parts:
+            return False
+
+        # Skip common binary or system files
+        skip_extensions = [
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+            ".obj",
+            ".o",
+            ".bin",
+            ".dat",
+            ".db",
+            ".sqlite",
+            ".idx",
+            ".pack",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".ico",
+            ".mp3",
+            ".mp4",
+            ".avi",
+            ".mov",
+            ".zip",
+            ".tar",
+            ".gz",
+        ]
+
+        if file_path.suffix.lower() in skip_extensions:
+            return False
+
+        # Skip common system directories
+        skip_patterns = [
+            "node_modules",
+            "__pycache__",
+            ".DS_Store",
+            "thumbs.db",
+            ".idea",
+            ".vscode",
+            ".github",
+        ]
+
+        for pattern in skip_patterns:
+            if pattern in file_path.parts:
+                return False
+
+        # Check if file is text (not binary)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                f.read(1024)  # Try reading a chunk
+            return True
+        except UnicodeDecodeError:
+            # Binary file
+            logger.debug(f"Skipping binary file: {file_path}")
+            return False
+
     def process(self, file_path: Union[str, Path]) -> ProcessingResult:
         """Process a Git repository.
 
@@ -708,19 +1011,28 @@ class GitProcessor(FileProcessor):
 
         try:
             # Clone repository
-            repo = Repo.clone_from(repo_url, self.options.output_dir)
+            repo_path = Path(self.options.output_dir) / "repos"
+            repo = Repo.clone_from(repo_url, repo_path)
             if not repo.git_dir:
                 return ProcessingResult.error("Repository appears empty")
 
-            # Get all files in the repository
-            repo_files = list(Path(self.options.output_dir).rglob("*"))
-            repo_files = [f for f in repo_files if f.is_file()]
+            # Get all files in the repository and filter them
+            repo_files = []
+            for f in repo_path.rglob("*"):
+                if f.is_file() and self._is_processable_file(f):
+                    repo_files.append(f)
+                    logger.debug(f"Adding processable file: {f}")
+                elif f.is_file():
+                    logger.debug(f"Skipping non-processable file: {f}")
+
+            logger.info(f"Found {len(repo_files)} processable files in repository")
 
             return ProcessingResult(
                 repo_files, {"repo_url": repo_url, "file_count": len(repo_files)}
             )
 
         except Exception as e:
+            logger.error(f"Error processing Git repository: {str(e)}")
             return ProcessingResult.error(f"Error processing Git repository: {str(e)}")
 
 
@@ -731,8 +1043,8 @@ class DocumentProcessor:
 
         # Register processors
         self.engine.register_processor(PDFProcessor())
-        self.engine.register_processor(URLProcessor())
         self.engine.register_processor(GitProcessor())
+        self.engine.register_processor(URLProcessor())
 
     def initialize(self, options: ProcessingOptions) -> None:
         try:
@@ -880,6 +1192,11 @@ def create_parser() -> argparse.ArgumentParser:
             "dest": "db_path",
             "default": str(default_options.db_path),
             "help": "Path to LightRAG database",
+        },
+        "-ldb": {
+            "dest": "lang-db",
+            "default": str(default_options.lang_path),
+            "help": "Path to treesitter database",
         },
     }
 
