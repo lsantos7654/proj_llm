@@ -1,35 +1,34 @@
 """Document processing and embedding system for storing and retrieving documents."""
 
 import argparse
-import json
 import logging
 import re
+import os
 import sys
-import warnings
+import json
+from tree_sitter import Language, Parser
+from datetime import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from enum import Enum, auto
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from xml.etree import ElementTree
 
 import requests
-import weaviate
 from dotenv import load_dotenv
 from git import Repo
-from openai import OpenAI
-from weaviate.util import generate_uuid5
+from lightrag import LightRAG, QueryParam
+from lightrag.utils import EmbeddingFunc
+from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 
 from utils.pdf_spliter import split_pdf_vertically
 from utils.segment_tables import extract_table_from_pdf
 from utils.tokenizer import OpenAITokenizerWrapper
 
-load_dotenv()
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=ResourceWarning)
 from docling.document_converter import DocumentConverter
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+
+load_dotenv()
 
 # logging.basicConfig(level=logging.INFO)
 logging.basicConfig(
@@ -38,24 +37,38 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ProcessingMode(Enum):
-    """Enum for different processing modes."""
-
-    APPEND = auto()
-    OVERWRITE = auto()
+@dataclass
+class CodeChunk:
+    text: str
+    metadata: Optional[Dict[str, Any]] = None
+    node_type: Optional[str] = None
 
 
 @dataclass
 class ProcessingOptions:
     """Configuration options for file processing."""
 
+    # Processing flags
     extract_tables: bool = False
     split_vertical: bool = False
     sitemap_only: bool = False
-    mode: ProcessingMode = ProcessingMode.APPEND
-    db_path: Path = Path("data/lancedb")
-    table_name: str = "docling"
+
+    # Path configurations
+    db_path: Path = Path("data/default_db")
+    lang_path: Path = Path("data/tree-sitter-parsers")
     output_dir: Path = Path("output")
+    table_name: str = "docling"
+
+    # Model parameters
+    embedding_dim: int = 1536
+    max_token_size: int = 8192
+
+    # Search parameters
+    search_modes: List[str] = field(
+        default_factory=lambda: ["naive", "local", "global", "hybrid", "mix"]
+    )
+    default_search_mode: str = "hybrid"
+    default_result_limit: int = 10
 
 
 class ProcessingResult:
@@ -133,164 +146,280 @@ class FileProcessor(ABC):
         self.options = options
 
 
-class WeaviateSchema:
-    def __init__(self, client):
-        self.client = client
+class TreeSitterChunker:
+    """Code chunker using Tree-sitter for language-aware parsing."""
 
-    def create_schema(self):
-        class_obj = {
-            "class": "DocumentChunk",
-            "vectorizer": "text2vec-openai",
-            "vectorIndexConfig": {"distance": "cosine"},
-            "properties": [
-                {
-                    "name": "text",
-                    "dataType": ["text"],
-                    "vectorizer": "text2vec-openai",
-                },
-                {
-                    "name": "title",
-                    "dataType": ["text"],
-                    "vectorizer": "text2vec-openai",
-                },
-                {
-                    "name": "summary",
-                    "dataType": ["text"],
-                    "vectorizer": "text2vec-openai",
-                },
-                {
-                    "name": "sourceId",
-                    "dataType": ["string"],
-                },
-                {
-                    "name": "sourceType",
-                    "dataType": ["string"],
-                },
-                {
-                    "name": "chunkNumber",
-                    "dataType": ["int"],
-                },
-            ],
+    def __init__(self, languages_dir: Union[str, Path]):
+        """Initialize Tree-sitter with language parsers.
+
+        Args:
+            languages_dir: Directory containing Tree-sitter language repositories
+            (parameter kept for compatibility but not used with the new API)
+        """
+        self.languages_dir = Path(languages_dir)
+        self.parser = Parser()
+        self.languages = {}
+
+        # Load available languages
+        self._load_languages()
+
+    def _load_languages(self):
+        """Load Tree-sitter language parsers using pre-compiled packages."""
+        # Dictionary to track import status
+        language_modules = {
+            "python": None,
+            "javascript": None,
+            "lua": None,
+            "typescript": None,
         }
 
-        self.client.schema.create_class(class_obj)
+        # Try to import each language module
+        for lang in language_modules.keys():
+            try:
+                module_name = f"tree_sitter_{lang}"
+                language_modules[lang] = __import__(module_name)
+                logger.info(f"Successfully imported {module_name}")
+            except ImportError:
+                logger.warning(
+                    f"Could not import {module_name}. Parser for {lang} will not be available."
+                )
+
+        # Initialize languages from successfully imported modules
+        try:
+            for lang, module in language_modules.items():
+                if module is not None:
+                    self.languages[lang] = Language(module.language())
+                    logger.info(f"Loaded Tree-sitter parser for {lang}")
+
+            if not self.languages:
+                logger.warning(
+                    "No Tree-sitter language parsers were loaded. Will use fallback chunking."
+                )
+            else:
+                logger.info(f"Loaded {len(self.languages)} Tree-sitter parsers")
+        except Exception as e:
+            logger.error(f"Error initializing Tree-sitter languages: {e}")
+
+    def get_language_for_file(self, file_path: Path) -> Optional[Language]:
+        """Get the appropriate language parser for a file."""
+        ext = file_path.suffix.lower()
+        if ext == ".py":
+            return self.languages.get("python")
+        elif ext == ".lua":
+            return self.languages.get("lua")
+        elif ext == ".js":
+            return self.languages.get("javascript")
+        elif ext == ".ts":
+            return self.languages.get("typescript")
+        # Add more mappings as needed
+        return None
+
+    def chunk_file(self, file_path: Path) -> List[CodeChunk]:
+        """Parse a code file and return meaningful chunks."""
+        try:
+            # Read file content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Get language for the file
+            language = self.get_language_for_file(file_path)
+            if not language:
+                logger.warning(f"No Tree-sitter parser available for {file_path}")
+                return self._fallback_chunking(file_path, content)
+
+            # Set language for the parser
+            self.parser.language = language
+
+            # Parse the file
+            tree = self.parser.parse(bytes(content, "utf-8"))
+
+            # Extract meaningful chunks based on the syntax tree
+            chunks = self._extract_chunks(tree.root_node, content, file_path)
+
+            # If no meaningful chunks were found, fall back to simpler chunking
+            if not chunks:
+                logger.warning(f"No meaningful chunks found for {file_path}")
+                return self._fallback_chunking(file_path, content)
+
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Error parsing {file_path} with Tree-sitter: {e}")
+            return self._fallback_chunking(file_path, content)
+
+    def _extract_chunks(
+        self, root_node, content: str, file_path: Path
+    ) -> List[CodeChunk]:
+        """Extract meaningful code chunks from a syntax tree."""
+        chunks = []
+
+        # Define nodes of interest based on language
+        if file_path.suffix.lower() == ".py":
+            nodes_of_interest = ["class_definition", "function_definition", "module"]
+        elif file_path.suffix.lower() == ".lua":
+            nodes_of_interest = [
+                "function_declaration",
+                "local_function",
+                "table_constructor",
+            ]
+        elif file_path.suffix.lower() in [".js", ".ts"]:
+            nodes_of_interest = [
+                "class_declaration",
+                "function_declaration",
+                "method_definition",
+                "arrow_function",
+            ]
+        else:
+            nodes_of_interest = []
+
+        # Process nodes of interest
+        def process_node(node):
+            if node.type in nodes_of_interest:
+                # Extract code for this node
+                start_byte = node.start_byte
+                end_byte = node.end_byte
+                node_text = content[start_byte:end_byte]
+
+                # Create a chunk
+                chunk = CodeChunk(
+                    text=node_text,
+                    metadata={
+                        "source": str(file_path),
+                        "start_line": node.start_point[0] + 1,
+                        "end_line": node.end_point[0] + 1,
+                        "type": node.type,
+                    },
+                    node_type=node.type,
+                )
+                chunks.append(chunk)
+
+            # Recurse for children
+            for child in node.children:
+                process_node(child)
+
+        # Start processing from the root
+        process_node(root_node)
+
+        # If we found module-level chunks, ensure we also have smaller chunks
+        if any(chunk.node_type == "module" for chunk in chunks):
+            chunks = [
+                chunk for chunk in chunks if chunk.node_type != "module"
+            ] or chunks
+
+        return chunks
+
+    def _fallback_chunking(self, file_path: Path, content: str) -> List[CodeChunk]:
+        """Simple line-based chunking as a fallback."""
+        logger.info(f"Using fallback chunking for {file_path}")
+        chunks = []
+        lines = content.split("\n")
+
+        # Split into chunks of max 100 lines
+        max_lines = 100
+        for i in range(0, len(lines), max_lines):
+            chunk_lines = lines[i : i + max_lines]
+            chunk_text = "\n".join(chunk_lines)
+
+            # Skip empty chunks
+            if not chunk_text.strip():
+                continue
+
+            chunk = CodeChunk(
+                text=chunk_text,
+                metadata={
+                    "source": str(file_path),
+                    "start_line": i + 1,
+                    "end_line": min(i + max_lines, len(lines)),
+                    "type": "fallback_chunk",
+                },
+            )
+            chunks.append(chunk)
+
+        return chunks
 
 
-class WeaviateStorageManager:
-    """Manages document storage and retrieval in Weaviate."""
+class LightRAGStorageManager:
+    """Manages document chunking and storage using LightRAG."""
 
     def __init__(self, options: ProcessingOptions):
         """Initialize storage manager with processing options."""
         self.options = options
-        self.client = weaviate.Client(
-            url="http://localhost:8080",  # Update with your Weaviate instance URL
-        )
-        self.openai_client = OpenAI()
-        self.initialize_storage()
-
-    def initialize_storage(self) -> None:
-        """Initialize Weaviate storage and create schema if needed."""
-        try:
-            schema = WeaviateSchema(self.client)
-
-            # Check if schema exists
-            existing_schema = self.client.schema.get()
-            schema_exists = (
-                any(c["class"] == "DocumentChunk" for c in existing_schema["classes"])
-                if existing_schema.get("classes")
-                else False
-            )
-
-            if not schema_exists or self.options.mode == ProcessingMode.OVERWRITE:
-                if schema_exists:
-                    self.client.schema.delete_class("DocumentChunk")
-                schema.create_schema()
-
-            logger.debug("Storage initialized successfully")
-
-        except Exception as e:
-            logger.error(f"Storage initialization failed: {str(e)}", exc_info=True)
-            raise RuntimeError(f"Failed to initialize storage: {str(e)}")
-
-    def _generate_title_and_summary(self, text: str, source_id: str) -> Dict[str, str]:
-        """Generate title and summary for a document chunk using OpenAI's GPT model."""
-        logger.debug(
-            f"Starting title and summary generation for source_id: {source_id}"
+        self.rag = LightRAG(
+            working_dir=str(options.db_path),
+            embedding_func=EmbeddingFunc(
+                embedding_dim=options.embedding_dim,
+                max_token_size=options.max_token_size,
+                func=openai_embed,
+            ),
+            llm_model_func=gpt_4o_mini_complete,
+            addon_params={"insert_batch_size": 20},
         )
 
-        system_prompt = (
-            "You are an AI that extracts titles and summaries from document chunks. "
-            "Return a JSON object with 'title' and 'summary' keys. "
-            "For the title: Create a concise, descriptive title for this chunk. "
-            "For the summary: Create a brief summary of the main points in this chunk."
-        )
+        # Create output directory for chunks if it doesn't exist
+        self.chunks_dir = options.output_dir / "chunks"
+        os.makedirs(self.chunks_dir, exist_ok=True)
 
-        try:
-            response = self.openai_client.chat.completions.create(
-                model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {
-                        "role": "user",
-                        "content": f"Source: {source_id}\n\nContent:\n{text[:1000]}...",
-                    },
-                ],
-                response_format={"type": "json_object"},
-            )
+        # Set up a file for summary information
+        self.summary_file = options.output_dir / "chunks_summary.json"
+        self.chunk_summary = {
+            "timestamp": datetime.now().isoformat(),
+            "files": {},
+            "total_chunks": 0,
+        }
 
-            result = json.loads(response.choices[0].message.content)
-            return result
-
-        except Exception as e:
-            logger.error(f"Error generating title and summary: {e}")
-            return {
-                "title": "Error processing title",
-                "summary": "Error processing summary",
-            }
-
-    def process_chunks(
-        self, chunks: List[Any], metadata: Optional[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Process document chunks into storable format."""
+    def process_chunks(self, chunks: List[Any]) -> List[str]:
+        """Process document chunks into text content for LightRAG insertion."""
         processed_chunks = []
 
-        for i, chunk in enumerate(chunks):
+        for chunk in chunks:
             try:
-                filename = self._extract_filename(chunk) or f"chunk_{i}"
                 content = str(chunk.text)
-                source_type = (
-                    metadata.get("file_type") if isinstance(metadata, dict) else None
-                )
-                generated_data = self._generate_title_and_summary(content, filename)
-
-                chunk_dict = {
-                    "text": content,
-                    "title": generated_data.get("title", ""),
-                    "summary": generated_data.get("summary", ""),
-                    "sourceId": filename,
-                    "sourceType": source_type,
-                    "chunkNumber": i,
-                }
-                processed_chunks.append(chunk_dict)
-
+                processed_chunks.append(content)
             except Exception as e:
-                logger.error(f"Error processing chunk {i}: {str(e)}")
+                logger.error(f"Error processing chunk: {str(e)}")
                 continue
 
         return processed_chunks
 
-    def _extract_filename(self, chunk: Any) -> Optional[str]:
-        """Extract filename from chunk metadata."""
-        try:
-            return chunk.meta.origin.filename
-        except AttributeError:
-            return None
+    def save_chunks_to_file(
+        self, file_path: Union[str, Path], processed_chunks: List[str]
+    ) -> str:
+        """Save processed chunks to a file in the chunks directory.
+
+        Args:
+            file_path: Original file path that was chunked
+            processed_chunks: List of processed text chunks
+
+        Returns:
+            Path to the saved chunks file
+        """
+        # Create a filename based on the original file
+        original_name = Path(file_path).stem
+        safe_name = "".join(c if c.isalnum() else "_" for c in original_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = self.chunks_dir / f"{safe_name}_{timestamp}.json"
+
+        # Create a dictionary with metadata and chunks
+        chunks_data = {
+            "source_file": str(file_path),
+            "timestamp": datetime.now().isoformat(),
+            "num_chunks": len(processed_chunks),
+            "chunks": processed_chunks,
+        }
+
+        # Save to file
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(chunks_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Saved {len(processed_chunks)} chunks to {output_file}")
+        return str(output_file)
 
     def store_results(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Store processing results in Weaviate."""
+        """Store processing results using LightRAG and save chunks to files."""
         successful_stores = 0
         failed_stores = 0
         total_chunks = 0
+        saved_files = []
 
         for result in results:
             if not result.success:
@@ -299,48 +428,102 @@ class WeaviateStorageManager:
 
             try:
                 for file_path in result.processed_files:
-                    chunks = self.process_chunks(
-                        self._get_chunks_for_file(file_path), result.metadata
-                    )
+                    # Get chunks using HybridChunker
+                    chunks = self._get_chunks_for_file(file_path)
 
-                    # Store chunks in Weaviate
-                    for chunk in chunks:
-                        try:
-                            uuid = generate_uuid5(
-                                chunk["sourceId"], chunk["chunkNumber"]
-                            )
-                            self.client.data_object.create(
-                                data_object=chunk, class_name="DocumentChunk", uuid=uuid
-                            )
-                            total_chunks += 1
+                    # Process chunks to get text content
+                    processed_chunks = self.process_chunks(chunks)
 
-                        except Exception as e:
-                            logger.error(f"Error storing chunk: {str(e)}")
-                            failed_stores += 1
-                            continue
+                    if not processed_chunks:
+                        logger.warning(f"No chunks produced for {file_path}")
+                        failed_stores += 1
+                        continue
 
-                    successful_stores += 1
+                    # Save chunks to file
+                    output_file = self.save_chunks_to_file(file_path, processed_chunks)
+                    saved_files.append(output_file)
+
+                    # Update summary information
+                    self.chunk_summary["files"][str(file_path)] = {
+                        "chunks_file": output_file,
+                        "num_chunks": len(processed_chunks),
+                    }
+                    self.chunk_summary["total_chunks"] += len(processed_chunks)
+
+                    # Store chunks using LightRAG's batch insert
+                    try:
+                        self.rag.insert(processed_chunks)
+                        total_chunks += len(processed_chunks)
+                        successful_stores += 1
+                    except Exception as e:
+                        logger.error(f"Error storing chunks in LightRAG: {str(e)}")
+                        failed_stores += 1
+                        continue
 
             except Exception as e:
                 logger.error(f"Error storing result: {str(e)}")
                 failed_stores += 1
 
+        # Save summary information
+        try:
+            with open(self.summary_file, "w", encoding="utf-8") as f:
+                json.dump(self.chunk_summary, f, ensure_ascii=False, indent=2)
+            logger.info(f"Saved chunks summary to {self.summary_file}")
+        except Exception as e:
+            logger.error(f"Error saving chunks summary: {str(e)}")
+
         return {
             "successful_stores": successful_stores,
             "failed_stores": failed_stores,
             "total_chunks": total_chunks,
+            "saved_files": saved_files,
+            "summary_file": str(self.summary_file),
         }
 
     def _get_chunks_for_file(self, file_path: Union[str, Path]) -> List[Any]:
-        """Generate document chunks from a file."""
-        converter = DocumentConverter()
-        chunker = HybridChunker(
-            tokenizer=OpenAITokenizerWrapper(),
-            max_tokens=8191,
-            merge_peers=True,
-        )
+        """Generate document chunks from a file using appropriate chunking strategy."""
+        file_path = Path(file_path) if isinstance(file_path, str) else file_path
 
+        # Check if it's a code file
+        code_extensions = [
+            ".py",
+            ".lua",
+            ".js",
+            ".ts",
+            ".java",
+            ".c",
+            ".cpp",
+            ".h",
+            ".go",
+            ".rb",
+            ".php",
+        ]
+        is_code_file = file_path.suffix.lower() in code_extensions
+
+        if is_code_file:
+            # Use Tree-sitter for code files
+            try:
+                # Lazy-load/initialize the Tree-sitter chunker the first time it's needed
+                if not hasattr(self, "_tree_sitter_chunker"):
+                    languages_dir = Path(self.options.lang_path)
+                    self._tree_sitter_chunker = TreeSitterChunker(languages_dir)
+
+                # Chunk using Tree-sitter
+                code_chunks = self._tree_sitter_chunker.chunk_file(file_path)
+                return code_chunks
+            except Exception as e:
+                logger.error(f"Tree-sitter chunking failed for {file_path}: {e}")
+                # Fall back to standard chunking
+
+        # Use standard HybridChunker for non-code files or if Tree-sitter failed
         try:
+            converter = DocumentConverter()
+            chunker = HybridChunker(
+                tokenizer=OpenAITokenizerWrapper(),
+                max_tokens=8191,
+                merge_peers=True,
+            )
+
             result = converter.convert(file_path)
             chunks = list(chunker.chunk(dl_doc=result.document))
             return chunks
@@ -740,6 +923,76 @@ class GitProcessor(FileProcessor):
         ]
         return any(re.match(pattern, url) for pattern in git_patterns)
 
+    def _is_processable_file(self, file_path: Path) -> bool:
+        """Determine if a file can be processed based on its extension and other criteria.
+
+        Args:
+            file_path: Path to the file to check
+
+        Returns:
+            bool: True if the file can be processed, False otherwise
+        """
+        # Skip files in .git directory
+        if ".git" in file_path.parts:
+            return False
+
+        # Skip common binary or system files
+        skip_extensions = [
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+            ".obj",
+            ".o",
+            ".bin",
+            ".dat",
+            ".db",
+            ".sqlite",
+            ".idx",
+            ".pack",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".ico",
+            ".mp3",
+            ".mp4",
+            ".avi",
+            ".mov",
+            ".zip",
+            ".tar",
+            ".gz",
+        ]
+
+        if file_path.suffix.lower() in skip_extensions:
+            return False
+
+        # Skip common system directories
+        skip_patterns = [
+            "node_modules",
+            "__pycache__",
+            ".DS_Store",
+            "thumbs.db",
+            ".idea",
+            ".vscode",
+            ".github",
+        ]
+
+        for pattern in skip_patterns:
+            if pattern in file_path.parts:
+                return False
+
+        # Check if file is text (not binary)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                f.read(1024)  # Try reading a chunk
+            return True
+        except UnicodeDecodeError:
+            # Binary file
+            logger.debug(f"Skipping binary file: {file_path}")
+            return False
+
     def process(self, file_path: Union[str, Path]) -> ProcessingResult:
         """Process a Git repository.
 
@@ -758,99 +1011,51 @@ class GitProcessor(FileProcessor):
 
         try:
             # Clone repository
-            repo = Repo.clone_from(repo_url, self.options.output_dir)
+            repo_path = Path(self.options.output_dir) / "repos"
+            repo = Repo.clone_from(repo_url, repo_path)
             if not repo.git_dir:
                 return ProcessingResult.error("Repository appears empty")
 
-            # Get all files in the repository
-            repo_files = list(Path(self.options.output_dir).rglob("*"))
-            repo_files = [f for f in repo_files if f.is_file()]
+            # Get all files in the repository and filter them
+            repo_files = []
+            for f in repo_path.rglob("*"):
+                if f.is_file() and self._is_processable_file(f):
+                    repo_files.append(f)
+                    logger.debug(f"Adding processable file: {f}")
+                elif f.is_file():
+                    logger.debug(f"Skipping non-processable file: {f}")
+
+            logger.info(f"Found {len(repo_files)} processable files in repository")
 
             return ProcessingResult(
                 repo_files, {"repo_url": repo_url, "file_count": len(repo_files)}
             )
 
         except Exception as e:
+            logger.error(f"Error processing Git repository: {str(e)}")
             return ProcessingResult.error(f"Error processing Git repository: {str(e)}")
 
 
 class DocumentProcessor:
-    """Main class coordinating document processing workflow.
-
-    This class serves as the primary coordinator for document processing operations,
-    managing the initialization and execution of various document processors and storage
-    handlers. It supports processing of multiple document types including PDFs, URLs,
-    and Git repositories.
-
-    Attributes:
-        engine (ProcessingEngine):
-            The main processing enginethat coordinates file processing
-        storage_manager (Optional[StorageManager]):
-            Handler for storing processed documents
-    """
-
     def __init__(self):
-        """Initialize the DocumentProcessor with default processors.
-
-        Creates a new ProcessingEngine instance
-        and registers the default set of processors
-        (PDF, URL, and Git).
-        The storage handler is initially set to None and must be
-        initialized via the initialize() method before processing can begin.
-        """
         self.engine = ProcessingEngine()
-        self.storage_manager: Optional[WeaviateStorageManager] = None
+        self.storage_manager: Optional[LightRAGStorageManager] = None
 
         # Register processors
         self.engine.register_processor(PDFProcessor())
-        self.engine.register_processor(URLProcessor())
         self.engine.register_processor(GitProcessor())
+        self.engine.register_processor(URLProcessor())
 
     def initialize(self, options: ProcessingOptions) -> None:
-        """Initialize the processor with the specified options.
-
-        Sets up the processing engine and storage handler
-        with the provided configuration options.
-        This method must be called before any processing can occur.
-
-        Args:
-            options (ProcessingOptions):
-                Configuration options for processing and storage
-
-        Raises:
-            RuntimeError: If initialization fails for any reason
-        """
         try:
             self.engine.set_options(options)
-            self.storage_manager = WeaviateStorageManager(options)
+            self.storage_manager = LightRAGStorageManager(options)
             logger.debug("Document processor fully initialized")
         except Exception as e:
             logger.error(f"Initialization failed: {str(e)}")
             raise RuntimeError(f"Failed to initialize processor: {str(e)}")
 
     def process(self, input_path: Union[str, Path]) -> Dict[str, Any]:
-        """Process the input path and return processing results.
-
-        Processes a single input path which can be a file, directory, or URL. The method
-        coordinates the processing workflow, handles storage,
-        and generates a summary of the processing results.
-
-        Args:
-            input_path (Union[str, Path]):
-                Path to the input to process. Can be a file path,
-                directory path, or URL
-
-        Returns:
-            Dict[str, Any]: A dictionary containing processing results including:
-                - total_files: Total number of files processed
-                - successful_files: Number of successfully processed files
-                - failed_files: Number of files that failed processing
-                - errors: List of error messages from failed processing attempts
-                - total_chunks: (If stored) Number of chunks stored in the database
-
-        Raises:
-            RuntimeError: If process is called before initialization
-        """
         if not self.storage_manager:
             logger.error("Attempted to process before initialization")
             raise RuntimeError("Processor not initialized")
@@ -872,22 +1077,6 @@ class DocumentProcessor:
         return summary
 
     def _summarize_processing(self, results: List[ProcessingResult]) -> Dict[str, Any]:
-        """Create a summary of processing results.
-
-        Analyzes a list of ProcessingResult objects and generates a summary dictionary
-        containing counts of successful and failed operations,
-        along with any error messages.
-
-        Args:
-            results (List[ProcessingResult]): List of processing results to summarize
-
-        Returns:
-            Dict[str, Any]: A dictionary containing:
-                - total_files: Total number of files processed
-                - successful_files: Number of successfully processed files
-                - failed_files: Number of files that failed processing
-                - errors: List of error messages from failed operations
-        """
         successful = [r for r in results if r.success]
         failed = [r for r in results if not r.success]
 
@@ -900,182 +1089,64 @@ class DocumentProcessor:
 
 
 class DocumentSearcher:
-    """Handles document search operations using Weaviate."""
+    """Handles document search operations using LightRAG."""
 
-    def __init__(self, client: weaviate.Client):
-        self.client = client
+    def __init__(self, rag: LightRAG):
+        """Initialize searcher with LightRAG instance.
 
-    def analyze_search_results(self, results: List[Dict[str, Any]], query: str):
-        """Analyze and print detailed information about search results."""
-        print("\nSearch Analysis:")
-        print(f"Query: '{query}'")
+        Args:
+            rag: Initialized LightRAG instance
+        """
+        self.rag = rag
 
-        if not results:
-            print("No results to analyze")
-            return
+    def search(self, query: str, mode: str = "hybrid", limit: int = 10) -> Any:
+        """Search documents using specified LightRAG search mode.
 
-        # Get distances and scores, filtering out None values and converting to float
-        distances = [r.get("_additional", {}).get("distance") for r in results]
-        scores = [r.get("_additional", {}).get("score") for r in results]
+        Args:
+            query: The search query
+            mode: Search mode to use. One of:
+                - "naive": Basic search
+                - "local": Context-dependent search
+                - "global": Global knowledge search
+                - "hybrid": Combined local and global
+                - "mix": Knowledge graph + vector retrieval
+            limit: Maximum number of results to return
 
-        print("\nMetrics distribution:")
-        if any(d is not None for d in distances):
-            valid_distances = [float(d) for d in distances if d is not None]
-            print(f"Min distance: {min(valid_distances):.4f}")
-            print(f"Max distance: {max(valid_distances):.4f}")
-            print(f"Average distance: {sum(valid_distances)/len(valid_distances):.4f}")
+        Returns:
+            Search results from LightRAG
 
-        if any(s is not None for s in scores):
-            valid_scores = [float(s) for s in scores if s is not None]
-            try:
-                print(f"Min score: {min(valid_scores):.4f}")
-                print(f"Max score: {max(valid_scores):.4f}")
-                print(f"Average score: {sum(valid_scores)/len(valid_scores):.4f}")
-            except (ValueError, TypeError) as e:
-                print("Raw scores:", scores)
-                logger.error(f"Error processing scores: {e}")
+        Raises:
+            ValueError: If invalid search mode specified
+        """
+        valid_modes = ["naive", "local", "global", "hybrid", "mix"]
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid search mode. Must be one of: {valid_modes}")
 
-        print("\nField contribution analysis:")
-        for idx, result in enumerate(results[:3], 1):
-            print(f"\nResult #{idx}:")
-            distance = result.get("_additional", {}).get("distance")
-            score = result.get("_additional", {}).get("score")
-
-            if distance is not None:
-                try:
-                    print(f"Distance: {float(distance):.4f}")
-                except (ValueError, TypeError):
-                    print(f"Distance: {distance}")
-
-            if score is not None:
-                try:
-                    print(f"Score: {float(score):.4f}")
-                except (ValueError, TypeError):
-                    print(f"Score: {score}")
-
-            # Content analysis
-            title = result.get("title", "").lower()
-            text = result.get("text", "").lower()
-            summary = result.get("summary", "").lower()
-            query_lower = query.lower()
-
-            print(f"Title relevance: {'High' if query_lower in title else 'Low'}")
-            print(f"Text relevance: {'High' if query_lower in text else 'Low'}")
-            print(f"Summary relevance: {'High' if query_lower in summary else 'Low'}")
-
-    def semantic_search(
-        self, query: str, vector_field: str = "text", limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """Perform pure vector similarity search."""
         try:
-            # Log search parameters
-            logger.debug(
-                f"""
-                Search Configuration:
-                - Query: {query}
-                - Vector Field: {vector_field}
-                - Limit: {limit}
-                """
-            )
+            logger.debug(f"Searching with mode '{mode}', query: '{query}'")
 
-            # Build query and capture it before execution
-            search_query = (
-                self.client.query.get(
-                    "DocumentChunk",
-                    [
-                        "text",
-                        "title",
-                        "summary",
-                        "sourceId",
-                        "sourceType",
-                        "chunkNumber",
-                    ],
-                )
-                .with_near_text(
-                    {
-                        "concepts": [query],
-                        "properties": [vector_field],
-                        "certainty": 0.7,  # Add certainty threshold
-                    }
-                )
-                .with_additional(["distance", "vector"])  # Add vector to response
-            )
+            results = self.rag.query(query, param=QueryParam(mode=mode, top_k=limit))
 
-            # Log the raw GraphQL query
-            raw_query = search_query.build()
-            logger.debug(f"Generated GraphQL query:\n{raw_query}")
-
-            # Execute search
-            result = search_query.with_limit(limit).do()
-
-            if (
-                result
-                and "data" in result
-                and "Get" in result["data"]
-                and "DocumentChunk" in result["data"]["Get"]
-            ):
-                first_result = result["data"]["Get"]["DocumentChunk"][0]
-                if (
-                    "_additional" in first_result
-                    and "vector" in first_result["_additional"]
-                ):
-                    logger.debug(
-                        f"Vector dimensions: {len(first_result['_additional']['vector'])}"
-                    )
-                logger.debug("Distance calculation method: cosine")
-
-            return result["data"]["Get"]["DocumentChunk"]
+            logger.debug(f"Search completed, got results")
+            return results
 
         except Exception as e:
             logger.error(f"Search error: {str(e)}", exc_info=True)
-            return []
+            return None
 
-    def hybrid_search(
-        self,
-        query: str,
-        vector_field: str = "text",
-        limit: int = 10,
-        alpha: float = 0.5,
-    ) -> List[Dict[str, Any]]:
-        """Perform hybrid search combining vector similarity and text matching."""
-        try:
-            # Log search parameters
-            logger.debug(
-                f"""
-                Hybrid Search Configuration:
-                - Query: {query}
-                - Vector Field: {vector_field}
-                - Limit: {limit}
-                - Alpha: {alpha}
-                """
-            )
+    def get_available_modes(self) -> List[str]:
+        """Get list of available search modes.
 
-            result = (
-                self.client.query.get(
-                    "DocumentChunk",
-                    [
-                        "text",
-                        "title",
-                        "summary",
-                        "sourceId",
-                        "sourceType",
-                        "chunkNumber",
-                    ],
-                )
-                .with_hybrid(query=query, properties=[vector_field], alpha=alpha)
-                .with_additional(["score"])
-                .with_limit(limit)
-                .do()
-            )
-
-            return result["data"]["Get"]["DocumentChunk"]
-
-        except Exception as e:
-            logger.error(f"Search error: {str(e)}")
-            return []
+        Returns:
+            List of valid search mode strings
+        """
+        return ["naive", "local", "global", "hybrid", "mix"]
 
 
 def create_parser() -> argparse.ArgumentParser:
+    # Import ProcessingOptions defaults
+    default_options = ProcessingOptions()
+
     parser = argparse.ArgumentParser(
         description="Document Processing and Search System"
     )
@@ -1086,45 +1157,46 @@ def create_parser() -> argparse.ArgumentParser:
     search_parser = subparsers.add_parser("search", help="Search processed documents")
     search_parser.add_argument("query", help="Search query")
     search_parser.add_argument(
-        "--mode", choices=["hybrid", "semantic"], default="hybrid", help="Search mode"
+        "--mode",
+        choices=default_options.search_modes,
+        default=default_options.default_search_mode,
+        help="Search mode",
     )
     search_parser.add_argument(
-        "--field",
-        choices=["text", "title", "summary"],
-        default="text",
-        help="Field to search against",
+        "--limit",
+        type=int,
+        default=default_options.default_result_limit,
+        help="Maximum number of results",
     )
     search_parser.add_argument(
-        "--limit", type=int, default=10, help="Maximum number of results"
+        "-db",
+        dest="db_path",
+        default=str(default_options.db_path),
+        help="Path to LightRAG database",
     )
 
     # Process command
     process_parser = subparsers.add_parser("process", help="Process documents")
     process_subparsers = process_parser.add_subparsers(
-        dest="mode", help="Processing mode"
+        dest="type", help="Type of content to process"
     )
 
     # Common arguments for processing modes
     common_args = {
         "-o": {
             "dest": "output_dir",
-            "default": "output",
+            "default": str(default_options.output_dir),
             "help": "Output directory for processed files",
         },
         "-db": {
             "dest": "db_path",
-            "default": "data/weaviate",
-            "help": "Path to Weaviate database",
+            "default": str(default_options.db_path),
+            "help": "Path to LightRAG database",
         },
-        "-t": {
-            "dest": "table_name",
-            "default": "DocumentChunk",
-            "help": "Class name in Weaviate",
-        },
-        "--mode": {
-            "choices": ["append", "overwrite"],
-            "default": "append",
-            "help": "Database operation mode",
+        "-ldb": {
+            "dest": "lang-db",
+            "default": str(default_options.lang_path),
+            "help": "Path to treesitter database",
         },
     }
 
@@ -1160,38 +1232,30 @@ def main() -> int:
         parser = create_parser()
         args = parser.parse_args()
 
-        # Set up logging
-        logging.basicConfig(
-            level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-        )
-
         # Handle search command
         if args.command == "search":
-            client = weaviate.Client("http://localhost:8080")
-            searcher = DocumentSearcher(client)
+            # Initialize LightRAG
+            rag = LightRAG(
+                working_dir=str(args.db_path),
+                embedding_func=openai_embed,
+                llm_model_func=gpt_4o_mini_complete,
+            )
+            searcher = DocumentSearcher(rag)
 
-            if args.mode == "hybrid":  # Fixed from args.search_mode
-                results = searcher.hybrid_search(args.query, args.field, args.limit)
-                print("debug")
-                print(results[0].keys())
-                print(results[0].get("_additional"))
+            # Perform search
+            results = searcher.search(
+                query=args.query, mode=args.mode, limit=args.limit
+            )
+
+            # Print results
+            if results:
+                print(f"\nSearch Results for: {args.query}")
+                print("=" * 80)
+                print(results)
+                print("=" * 80)
             else:
-                results = searcher.semantic_search(args.query, args.field, args.limit)
+                print("No results found")
 
-            # Print search results
-            print(f"\nSearch Results for: {args.query}")
-            for i, result in enumerate(results, 1):
-                print(
-                    f"\n{i}. Distance: {result.get('_additional', {}).get('distance', 'N/A')}"
-                )
-                print(f"Title: {result.get('title', 'No title')}")
-                print(f"Summary: {result.get('summary', 'No summary')}")
-                print(f"Source: {result.get('sourceId', 'No source')}")
-                print(f"Text Preview: {result.get('text', 'No text')[:150]}...")
-                print("-" * 80)
-
-            # Add analysis of results
-            searcher.analyze_search_results(results, args.query)
             return 0
 
         # Handle processing commands
@@ -1200,13 +1264,7 @@ def main() -> int:
                 extract_tables=getattr(args, "extract_tables", False),
                 split_vertical=getattr(args, "split_vertical", False),
                 sitemap_only=getattr(args, "sitemap_only", False),
-                mode=(
-                    ProcessingMode.OVERWRITE
-                    if args.mode == "overwrite"
-                    else ProcessingMode.APPEND
-                ),
                 db_path=Path(args.db_path),
-                table_name=args.table_name,
                 output_dir=Path(args.output_dir),
             )
 
@@ -1241,10 +1299,6 @@ def main() -> int:
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
 
 
 if __name__ == "__main__":
