@@ -169,7 +169,6 @@ class TreeSitterChunker:
         language_modules = {
             "python": None,
             "javascript": None,
-            "lua": None,
             "typescript": None,
         }
 
@@ -205,8 +204,6 @@ class TreeSitterChunker:
         ext = file_path.suffix.lower()
         if ext == ".py":
             return self.languages.get("python")
-        elif ext == ".lua":
-            return self.languages.get("lua")
         elif ext == ".js":
             return self.languages.get("javascript")
         elif ext == ".ts":
@@ -256,12 +253,6 @@ class TreeSitterChunker:
         # Define nodes of interest based on language
         if file_path.suffix.lower() == ".py":
             nodes_of_interest = ["class_definition", "function_definition", "module"]
-        elif file_path.suffix.lower() == ".lua":
-            nodes_of_interest = [
-                "function_declaration",
-                "local_function",
-                "table_constructor",
-            ]
         elif file_path.suffix.lower() in [".js", ".ts"]:
             nodes_of_interest = [
                 "class_declaration",
@@ -309,13 +300,17 @@ class TreeSitterChunker:
         return chunks
 
     def _fallback_chunking(self, file_path: Path, content: str) -> List[CodeChunk]:
-        """Simple line-based chunking as a fallback."""
-        logger.info(f"Using fallback chunking for {file_path}")
+        """Simple token-aware chunking as a fallback."""
+        logger.info(f"Using token-aware fallback chunking for {file_path}")
         chunks = []
         lines = content.split("\n")
 
-        # Split into chunks of max 100 lines
-        max_lines = 100
+        # Roughly estimate tokens per line (conservative estimate)
+        # Most code lines are 5-15 tokens, using 10 as average
+        tokens_per_line = 10
+        max_tokens = 8000  # Leave some buffer below 8192
+        max_lines = max_tokens // tokens_per_line  # Approximately 800 lines
+
         for i in range(0, len(lines), max_lines):
             chunk_lines = lines[i : i + max_lines]
             chunk_text = "\n".join(chunk_lines)
