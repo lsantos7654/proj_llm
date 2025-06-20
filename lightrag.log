@@ -1,0 +1,645 @@
+2025-03-02 17:04:14,938 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:04:14,938 - lightrag - INFO - Creating working directory data/default_db
+2025-03-02 17:04:14,939 - lightrag - DEBUG - LightRAG init with param:
+  working_dir = data/default_db,
+  embedding_cache_config = {'enabled': False, 'similarity_threshold': 0.95, 'use_llm_check': False},
+  kv_storage = JsonKVStorage,
+  vector_storage = NanoVectorDBStorage,
+  graph_storage = NetworkXStorage,
+  doc_status_storage = JsonDocStatusStorage,
+  log_level = 0,
+  log_dir = /Users/santos/projects/proj_llm,
+  chunk_token_size = 1200,
+  chunk_overlap_token_size = 100,
+  tiktoken_model_name = gpt-4o-mini,
+  entity_extract_max_gleaning = 1,
+  entity_summary_to_max_tokens = 500,
+  node_embedding_algorithm = node2vec,
+  node2vec_params = {'dimensions': 1536, 'num_walks': 10, 'walk_length': 40, 'window_size': 2, 'iterations': 3, 'random_seed': 3},
+  embedding_func = {'embedding_dim': 1536, 'max_token_size': 8192, 'func': {'embedding_dim': 1536, 'max_token_size': 8192, 'func': <function openai_embed at 0x123fec180>}},
+  embedding_batch_num = 32,
+  embedding_func_max_async = 16,
+  llm_model_func = <function gpt_4o_mini_complete at 0x123fdfc40>,
+  llm_model_name = meta-llama/Llama-3.2-1B-Instruct,
+  llm_model_max_token_size = 32768,
+  llm_model_max_async = 16,
+  llm_model_kwargs = {},
+  vector_db_storage_cls_kwargs = {'cosine_better_than_threshold': 0.2},
+  namespace_prefix = ,
+  enable_llm_cache = True,
+  enable_llm_cache_for_entity_extract = True,
+  addon_params = {'insert_batch_size': 20},
+  auto_manage_storages_states = True,
+  convert_response_to_json_func = <function convert_response_to_json at 0x1056b5580>,
+  chunking_func = <function chunking_by_token_size at 0x105fa8360>
+
+2025-03-02 17:04:14,940 - lightrag - INFO - Load KV llm_response_cache with 0 data
+2025-03-02 17:04:14,940 - lightrag - INFO - Load KV full_docs with 0 data
+2025-03-02 17:04:14,940 - lightrag - INFO - Load KV text_chunks with 0 data
+2025-03-02 17:04:17,619 - lightrag - INFO - Loaded document status storage with 0 records
+2025-03-02 17:04:17,620 - lightrag - DEBUG - Initialized Storages
+2025-03-02 17:04:45,220 - lightrag - INFO - Stored 34 new unique documents
+2025-03-02 17:04:45,220 - lightrag - INFO - Number of batches to process: 2.
+2025-03-02 17:04:45,367 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:04:45,389 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:04:45,490 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:04:45,491 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:04:45,491 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:04:46,594 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:04:46,603 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:04:46,603 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:04:46,603 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:04:50,844 - lightrag - DEBUG - ⠙ Processed 1 chunks, 3 entities(duplicated), 2 relations(duplicated)
+2025-03-02 17:04:50,846 - lightrag - INFO - Inserting 3 vectors to entities
+2025-03-02 17:04:51,524 - lightrag - INFO - Inserting 2 vectors to relationships
+2025-03-02 17:04:52,293 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:04:52,297 - lightrag - INFO - Writing graph with 3 nodes, 2 edges
+2025-03-02 17:04:52,301 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:04:52,309 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:04:52,316 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:04:52,316 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:04:52,316 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:04:55,924 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:04:55,936 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:04:55,936 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:04:55,936 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:02,617 - lightrag - DEBUG - ⠙ Processed 1 chunks, 7 entities(duplicated), 4 relations(duplicated)
+2025-03-02 17:05:02,618 - lightrag - INFO - Inserting 7 vectors to entities
+2025-03-02 17:05:03,528 - lightrag - INFO - Inserting 4 vectors to relationships
+2025-03-02 17:05:04,115 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:05:04,122 - lightrag - INFO - Writing graph with 10 nodes, 6 edges
+2025-03-02 17:05:04,125 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:05:04,132 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:04,138 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:04,138 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:04,138 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:08,235 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:08,249 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:08,249 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:08,249 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:30,559 - lightrag - DEBUG - ⠙ Processed 1 chunks, 14 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:05:30,563 - lightrag - INFO - Inserting 14 vectors to entities
+2025-03-02 17:05:31,661 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:05:32,211 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:05:32,217 - lightrag - INFO - Writing graph with 24 nodes, 14 edges
+2025-03-02 17:05:32,219 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:05:32,225 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:32,229 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:32,229 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:32,229 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:35,168 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:35,176 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:35,177 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:35,177 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:44,805 - lightrag - DEBUG - ⠙ Processed 1 chunks, 11 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:05:44,807 - lightrag - INFO - Inserting 11 vectors to entities
+2025-03-02 17:05:45,704 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:05:46,347 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:05:46,354 - lightrag - INFO - Writing graph with 35 nodes, 22 edges
+2025-03-02 17:05:46,356 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:05:46,363 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:46,368 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:46,368 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:46,368 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:50,732 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:50,745 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:50,745 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:50,745 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:56,261 - lightrag - DEBUG - ⠙ Processed 1 chunks, 9 entities(duplicated), 6 relations(duplicated)
+2025-03-02 17:05:56,263 - lightrag - INFO - Inserting 9 vectors to entities
+2025-03-02 17:05:57,017 - lightrag - INFO - Inserting 6 vectors to relationships
+2025-03-02 17:05:57,717 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:05:57,725 - lightrag - INFO - Writing graph with 44 nodes, 28 edges
+2025-03-02 17:05:57,728 - lightrag - INFO - Inserting 2 vectors to chunks
+2025-03-02 17:05:57,735 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:57,740 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:57,740 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:57,740 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:05:57,742 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:05:57,747 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:05:57,747 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:05:57,747 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:09,061 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:09,073 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:09,074 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:09,074 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:27,702 - lightrag - DEBUG - ⠙ Processed 1 chunks, 48 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:06:32,614 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:32,628 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:32,629 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:32,629 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:43,976 - lightrag - DEBUG - ⠹ Processed 2 chunks, 77 entities(duplicated), 18 relations(duplicated)
+2025-03-02 17:06:43,982 - lightrag - INFO - Inserting 75 vectors to entities
+2025-03-02 17:06:45,287 - lightrag - INFO - Inserting 18 vectors to relationships
+2025-03-02 17:06:46,343 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:06:46,353 - lightrag - INFO - Writing graph with 126 nodes, 46 edges
+2025-03-02 17:06:46,355 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:06:46,360 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:46,366 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:46,366 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:46,366 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:47,564 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:47,577 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:47,577 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:47,577 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:49,202 - lightrag - DEBUG - ⠙ Processed 1 chunks, 3 entities(duplicated), 0 relations(duplicated)
+2025-03-02 17:06:49,203 - lightrag - WARNING - Didn't extract any relationships
+2025-03-02 17:06:49,204 - lightrag - INFO - Inserting 3 vectors to entities
+2025-03-02 17:06:49,759 - lightrag - INFO - Inserting 0 vectors to relationships
+2025-03-02 17:06:49,759 - lightrag - WARNING - You insert an empty data to vector DB
+2025-03-02 17:06:49,759 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:06:49,775 - lightrag - INFO - Writing graph with 128 nodes, 46 edges
+2025-03-02 17:06:49,778 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:06:49,785 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:49,791 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:49,791 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:49,791 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:51,456 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:51,469 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:51,469 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:51,469 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:06:56,984 - lightrag - DEBUG - ⠙ Processed 1 chunks, 5 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:06:56,986 - lightrag - INFO - Inserting 5 vectors to entities
+2025-03-02 17:06:57,432 - lightrag - INFO - Inserting 5 vectors to relationships
+2025-03-02 17:06:58,083 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:06:58,099 - lightrag - INFO - Writing graph with 133 nodes, 51 edges
+2025-03-02 17:06:58,103 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:06:58,109 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:06:58,115 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:06:58,115 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:06:58,115 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:07:04,745 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:07:04,754 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:07:04,754 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:07:04,754 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:07:12,652 - lightrag - DEBUG - ⠙ Processed 1 chunks, 11 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:07:12,655 - lightrag - INFO - Inserting 11 vectors to entities
+2025-03-02 17:07:13,647 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:07:14,217 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:07:14,233 - lightrag - INFO - Writing graph with 143 nodes, 59 edges
+2025-03-02 17:07:14,237 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:07:14,243 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:07:14,249 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:07:14,249 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:07:14,249 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:07:26,374 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:07:26,384 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:07:26,384 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:07:26,384 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:07:52,794 - lightrag - DEBUG - ⠙ Processed 1 chunks, 21 entities(duplicated), 9 relations(duplicated)
+2025-03-02 17:07:52,801 - lightrag - INFO - Inserting 21 vectors to entities
+2025-03-02 17:07:53,867 - lightrag - INFO - Inserting 9 vectors to relationships
+2025-03-02 17:07:54,771 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:07:54,787 - lightrag - INFO - Writing graph with 161 nodes, 68 edges
+2025-03-02 17:07:54,791 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:07:54,797 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:07:54,802 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:07:54,802 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:07:54,802 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:08:11,957 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:08:11,971 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:08:11,971 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:08:11,971 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:08:22,594 - lightrag - DEBUG - ⠙ Processed 1 chunks, 12 entities(duplicated), 11 relations(duplicated)
+2025-03-02 17:08:22,598 - lightrag - INFO - Inserting 12 vectors to entities
+2025-03-02 17:08:23,346 - lightrag - INFO - Inserting 11 vectors to relationships
+2025-03-02 17:08:24,002 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:08:24,020 - lightrag - INFO - Writing graph with 169 nodes, 78 edges
+2025-03-02 17:08:24,024 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:08:24,030 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:08:24,035 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:08:24,035 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:08:24,035 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:08:33,958 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:08:33,972 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:08:33,972 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:08:33,972 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:08:42,253 - lightrag - DEBUG - ⠙ Processed 1 chunks, 11 entities(duplicated), 15 relations(duplicated)
+2025-03-02 17:08:42,257 - lightrag - INFO - Inserting 11 vectors to entities
+2025-03-02 17:08:43,279 - lightrag - INFO - Inserting 15 vectors to relationships
+2025-03-02 17:08:43,885 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:08:43,901 - lightrag - INFO - Writing graph with 176 nodes, 93 edges
+2025-03-02 17:08:43,905 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:08:43,912 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:08:43,916 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:08:43,916 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:08:43,916 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:08:54,330 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:08:54,343 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:08:54,343 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:08:54,343 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:01,338 - lightrag - DEBUG - ⠙ Processed 1 chunks, 15 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:09:01,344 - lightrag - INFO - Inserting 15 vectors to entities
+2025-03-02 17:09:02,057 - lightrag - INFO - Inserting 5 vectors to relationships
+2025-03-02 17:09:02,719 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:09:02,742 - lightrag - INFO - Writing graph with 189 nodes, 98 edges
+2025-03-02 17:09:02,747 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:09:02,753 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:02,758 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:02,758 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:02,758 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:12,160 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:12,173 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:12,173 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:12,173 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:28,539 - lightrag - DEBUG - ⠙ Processed 1 chunks, 18 entities(duplicated), 18 relations(duplicated)
+2025-03-02 17:09:28,543 - lightrag - INFO - Inserting 18 vectors to entities
+2025-03-02 17:09:29,554 - lightrag - INFO - Inserting 18 vectors to relationships
+2025-03-02 17:09:30,370 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:09:30,388 - lightrag - INFO - Writing graph with 207 nodes, 116 edges
+2025-03-02 17:09:30,392 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:09:30,397 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:30,401 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:30,402 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:30,402 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:34,506 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:34,513 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:34,514 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:34,514 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:41,134 - lightrag - DEBUG - ⠙ Processed 1 chunks, 10 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:09:41,136 - lightrag - INFO - Inserting 10 vectors to entities
+2025-03-02 17:09:41,633 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:09:42,512 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:09:42,535 - lightrag - INFO - Writing graph with 216 nodes, 124 edges
+2025-03-02 17:09:42,540 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:09:42,546 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:42,552 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:42,552 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:42,552 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:09:50,592 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:09:50,605 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:09:50,605 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:09:50,605 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:18,203 - lightrag - DEBUG - ⠙ Processed 1 chunks, 17 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:10:18,210 - lightrag - INFO - Inserting 17 vectors to entities
+2025-03-02 17:10:18,971 - lightrag - INFO - Inserting 5 vectors to relationships
+2025-03-02 17:10:19,696 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:10:19,721 - lightrag - INFO - Writing graph with 230 nodes, 129 edges
+2025-03-02 17:10:19,727 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:10:19,733 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:19,738 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:19,738 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:19,738 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:26,496 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:26,507 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:26,507 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:26,507 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:33,050 - lightrag - DEBUG - ⠙ Processed 1 chunks, 13 entities(duplicated), 3 relations(duplicated)
+2025-03-02 17:10:33,053 - lightrag - INFO - Inserting 13 vectors to entities
+2025-03-02 17:10:33,997 - lightrag - INFO - Inserting 3 vectors to relationships
+2025-03-02 17:10:34,497 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:10:34,526 - lightrag - INFO - Writing graph with 238 nodes, 132 edges
+2025-03-02 17:10:34,531 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:10:34,537 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:34,543 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:34,543 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:34,543 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:39,713 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:39,726 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:39,726 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:39,726 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:48,193 - lightrag - DEBUG - ⠙ Processed 1 chunks, 11 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:10:48,196 - lightrag - INFO - Inserting 11 vectors to entities
+2025-03-02 17:10:48,905 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:10:49,429 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:10:49,453 - lightrag - INFO - Writing graph with 247 nodes, 140 edges
+2025-03-02 17:10:49,458 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:10:49,465 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:49,470 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:49,470 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:49,470 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:10:57,321 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:10:57,331 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:10:57,331 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:10:57,331 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:11:10,120 - lightrag - DEBUG - ⠙ Processed 1 chunks, 12 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:11:10,123 - lightrag - INFO - Inserting 12 vectors to entities
+2025-03-02 17:11:10,865 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:11:11,483 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:11:11,507 - lightrag - INFO - Writing graph with 257 nodes, 148 edges
+2025-03-02 17:11:11,513 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:11:11,519 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:11:11,524 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:11:11,524 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:11:11,524 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:11:15,338 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:11:15,342 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:11:15,342 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:11:15,342 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:11:22,921 - lightrag - DEBUG - ⠙ Processed 1 chunks, 10 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:11:22,924 - lightrag - INFO - Inserting 10 vectors to entities
+2025-03-02 17:11:24,766 - lightrag - INFO - Inserting 5 vectors to relationships
+2025-03-02 17:11:25,279 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:11:25,308 - lightrag - INFO - Writing graph with 266 nodes, 153 edges
+2025-03-02 17:11:25,313 - lightrag - INFO - Completed batch 1 of 2.
+2025-03-02 17:11:25,314 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:11:25,320 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:11:25,325 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:11:25,325 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:11:25,325 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:11:33,979 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:11:33,992 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:11:33,992 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:11:33,992 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:11:41,046 - lightrag - DEBUG - ⠙ Processed 1 chunks, 17 entities(duplicated), 5 relations(duplicated)
+2025-03-02 17:11:41,050 - lightrag - INFO - Inserting 17 vectors to entities
+2025-03-02 17:11:41,503 - lightrag - INFO - Inserting 5 vectors to relationships
+2025-03-02 17:11:41,930 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:11:41,959 - lightrag - INFO - Writing graph with 278 nodes, 157 edges
+2025-03-02 17:11:41,965 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:11:41,970 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:11:41,975 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:11:41,975 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:11:41,975 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:02,195 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:02,209 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:02,210 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:02,210 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:12,472 - lightrag - DEBUG - ⠙ Processed 1 chunks, 24 entities(duplicated), 12 relations(duplicated)
+2025-03-02 17:12:12,477 - lightrag - INFO - Inserting 24 vectors to entities
+2025-03-02 17:12:13,376 - lightrag - INFO - Inserting 12 vectors to relationships
+2025-03-02 17:12:14,176 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:12:14,201 - lightrag - INFO - Writing graph with 301 nodes, 169 edges
+2025-03-02 17:12:14,206 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:12:14,212 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:14,216 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:14,216 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:14,217 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:20,149 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:20,162 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:20,162 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:20,162 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:26,941 - lightrag - DEBUG - ⠙ Processed 1 chunks, 8 entities(duplicated), 10 relations(duplicated)
+2025-03-02 17:12:26,948 - lightrag - INFO - Inserting 8 vectors to entities
+2025-03-02 17:12:27,682 - lightrag - INFO - Inserting 10 vectors to relationships
+2025-03-02 17:12:28,127 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:12:28,153 - lightrag - INFO - Writing graph with 305 nodes, 178 edges
+2025-03-02 17:12:28,159 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:12:28,164 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:28,169 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:28,169 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:28,169 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:31,252 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:31,266 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:31,266 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:31,266 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:39,105 - lightrag - DEBUG - ⠙ Processed 1 chunks, 8 entities(duplicated), 6 relations(duplicated)
+2025-03-02 17:12:39,108 - lightrag - INFO - Inserting 8 vectors to entities
+2025-03-02 17:12:39,714 - lightrag - INFO - Inserting 6 vectors to relationships
+2025-03-02 17:12:40,273 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:12:40,305 - lightrag - INFO - Writing graph with 309 nodes, 182 edges
+2025-03-02 17:12:40,310 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:12:40,316 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:40,321 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:40,321 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:40,321 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:44,228 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:44,241 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:44,241 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:44,241 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:48,364 - lightrag - DEBUG - ⠙ Processed 1 chunks, 7 entities(duplicated), 4 relations(duplicated)
+2025-03-02 17:12:48,366 - lightrag - INFO - Inserting 7 vectors to entities
+2025-03-02 17:12:49,088 - lightrag - INFO - Inserting 4 vectors to relationships
+2025-03-02 17:12:49,551 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:12:49,580 - lightrag - INFO - Writing graph with 315 nodes, 186 edges
+2025-03-02 17:12:49,586 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:12:49,591 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:49,596 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:49,596 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:49,596 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:54,157 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:54,170 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:54,171 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:54,171 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:12:58,130 - lightrag - DEBUG - ⠙ Processed 1 chunks, 10 entities(duplicated), 3 relations(duplicated)
+2025-03-02 17:12:58,133 - lightrag - INFO - Inserting 10 vectors to entities
+2025-03-02 17:12:58,696 - lightrag - INFO - Inserting 3 vectors to relationships
+2025-03-02 17:12:59,189 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:12:59,224 - lightrag - INFO - Writing graph with 325 nodes, 189 edges
+2025-03-02 17:12:59,231 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:12:59,237 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:12:59,242 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:12:59,242 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:12:59,242 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:04,399 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:04,412 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:04,412 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:04,412 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:09,110 - lightrag - DEBUG - ⠙ Processed 1 chunks, 8 entities(duplicated), 6 relations(duplicated)
+2025-03-02 17:13:09,113 - lightrag - INFO - Inserting 8 vectors to entities
+2025-03-02 17:13:09,591 - lightrag - INFO - Inserting 6 vectors to relationships
+2025-03-02 17:13:10,262 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:13:10,294 - lightrag - INFO - Writing graph with 331 nodes, 195 edges
+2025-03-02 17:13:10,300 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:13:10,306 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:10,311 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:10,311 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:10,311 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:15,352 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:15,359 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:15,359 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:15,360 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:24,880 - lightrag - DEBUG - ⠙ Processed 1 chunks, 10 entities(duplicated), 7 relations(duplicated)
+2025-03-02 17:13:24,883 - lightrag - INFO - Inserting 10 vectors to entities
+2025-03-02 17:13:25,624 - lightrag - INFO - Inserting 7 vectors to relationships
+2025-03-02 17:13:26,312 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:13:26,346 - lightrag - INFO - Writing graph with 335 nodes, 202 edges
+2025-03-02 17:13:26,353 - lightrag - INFO - Inserting 2 vectors to chunks
+2025-03-02 17:13:26,359 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:26,364 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:26,364 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:26,365 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:26,366 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:26,370 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:26,370 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:26,370 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:31,744 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:31,757 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:31,757 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:31,757 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:32,973 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:32,985 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:32,985 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:32,985 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:39,522 - lightrag - DEBUG - ⠙ Processed 1 chunks, 15 entities(duplicated), 2 relations(duplicated)
+2025-03-02 17:13:40,240 - lightrag - DEBUG - ⠹ Processed 2 chunks, 37 entities(duplicated), 2 relations(duplicated)
+2025-03-02 17:13:40,244 - lightrag - INFO - Inserting 25 vectors to entities
+2025-03-02 17:13:41,092 - lightrag - INFO - Inserting 2 vectors to relationships
+2025-03-02 17:13:41,605 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:13:41,644 - lightrag - INFO - Writing graph with 354 nodes, 204 edges
+2025-03-02 17:13:41,651 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:13:41,657 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:41,662 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:41,662 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:41,662 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:48,488 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:48,501 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:48,501 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:48,501 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:13:56,504 - lightrag - DEBUG - ⠙ Processed 1 chunks, 8 entities(duplicated), 7 relations(duplicated)
+2025-03-02 17:13:56,506 - lightrag - INFO - Inserting 8 vectors to entities
+2025-03-02 17:13:57,282 - lightrag - INFO - Inserting 7 vectors to relationships
+2025-03-02 17:13:58,038 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:13:58,073 - lightrag - INFO - Writing graph with 361 nodes, 211 edges
+2025-03-02 17:13:58,079 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:13:58,085 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:13:58,090 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:13:58,090 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:13:58,090 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:04,245 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:04,257 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:04,257 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:04,257 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:13,520 - lightrag - DEBUG - ⠙ Processed 1 chunks, 12 entities(duplicated), 12 relations(duplicated)
+2025-03-02 17:14:13,523 - lightrag - INFO - Inserting 12 vectors to entities
+2025-03-02 17:14:14,405 - lightrag - INFO - Inserting 12 vectors to relationships
+2025-03-02 17:14:15,259 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:14:15,291 - lightrag - INFO - Writing graph with 371 nodes, 223 edges
+2025-03-02 17:14:15,298 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:14:15,303 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:15,309 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:15,309 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:15,309 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:19,256 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:19,269 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:19,269 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:19,269 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:26,422 - lightrag - DEBUG - ⠙ Processed 1 chunks, 11 entities(duplicated), 8 relations(duplicated)
+2025-03-02 17:14:26,425 - lightrag - INFO - Inserting 11 vectors to entities
+2025-03-02 17:14:26,946 - lightrag - INFO - Inserting 8 vectors to relationships
+2025-03-02 17:14:28,573 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:14:28,608 - lightrag - INFO - Writing graph with 379 nodes, 230 edges
+2025-03-02 17:14:28,615 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:14:28,620 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:28,625 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:28,625 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:28,625 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:42,193 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:42,206 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:42,206 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:42,206 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:52,336 - lightrag - DEBUG - ⠙ Processed 1 chunks, 14 entities(duplicated), 10 relations(duplicated)
+2025-03-02 17:14:52,341 - lightrag - INFO - Inserting 14 vectors to entities
+2025-03-02 17:14:55,553 - lightrag - INFO - Inserting 10 vectors to relationships
+2025-03-02 17:14:56,269 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:14:56,305 - lightrag - INFO - Writing graph with 389 nodes, 240 edges
+2025-03-02 17:14:56,312 - lightrag - INFO - Inserting 1 vectors to chunks
+2025-03-02 17:14:56,318 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:56,322 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:56,322 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:56,322 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:14:57,220 - lightrag - INFO - Non-embedding cached missed(mode:default type:extract)
+2025-03-02 17:14:57,233 - lightrag - DEBUG - ===== Sending Query to LLM =====
+2025-03-02 17:14:57,233 - lightrag - DEBUG - Model: gpt-4o-mini   Base URL: None
+2025-03-02 17:14:57,233 - lightrag - DEBUG - Additional kwargs: {}
+2025-03-02 17:15:03,381 - lightrag - DEBUG - ⠙ Processed 1 chunks, 6 entities(duplicated), 3 relations(duplicated)
+2025-03-02 17:15:03,382 - lightrag - INFO - Inserting 6 vectors to entities
+2025-03-02 17:15:04,481 - lightrag - INFO - Inserting 3 vectors to relationships
+2025-03-02 17:15:04,896 - lightrag - INFO - New entities or relationships extracted.
+2025-03-02 17:15:04,941 - lightrag - INFO - Writing graph with 392 nodes, 243 edges
+2025-03-02 17:15:04,948 - lightrag - INFO - Completed batch 2 of 2.
+2025-03-02 17:15:35,975 - lightrag - DEBUG - Finalized Storages
+2025-03-02 17:19:51,279 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:19:51,280 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:20:13,639 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:20:13,649 - lightrag - INFO - Load KV llm_response_cache with 1 data
+2025-03-02 17:20:13,650 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:20:13,651 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:20:13,664 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:20:13,697 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:20:13,697 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:20:13,698 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:20:13,698 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:keywords)
+2025-03-02 17:20:15,217 - lightrag - INFO - Query nodes: Academic articles, Databases, Topic summary, Findings, Methodology, top_k: 5, cosine: 0.2
+2025-03-02 17:20:15,233 - lightrag - INFO - Query edges: Research papers, Access, Summarization, top_k: 5, cosine: 0.2
+2025-03-02 17:20:15,604 - lightrag - INFO - Local query uses 5 entites, 4 relations, 2 chunks
+2025-03-02 17:20:15,661 - lightrag - INFO - Global query uses 8 entites, 5 relations, 3 chunks
+2025-03-02 17:20:15,693 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:20:15,693 - lightrag - INFO - Non-embedding cached hit(mode:hybrid type:keywords)
+2025-03-02 17:20:15,694 - lightrag - INFO - Query nodes: Academic articles, Databases, Topic summary, Findings, Methodology, top_k: 60, cosine: 0.2
+2025-03-02 17:20:15,700 - lightrag - INFO - Query edges: Research papers, Access, Summarization, top_k: 60, cosine: 0.2
+2025-03-02 17:20:16,124 - lightrag - INFO - Global query uses 79 entites, 60 relations, 12 chunks
+2025-03-02 17:20:16,144 - lightrag - INFO - Local query uses 60 entites, 56 relations, 15 chunks
+2025-03-02 17:24:32,357 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:24:32,367 - lightrag - INFO - Load KV llm_response_cache with 2 data
+2025-03-02 17:24:32,369 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:24:32,372 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:24:32,386 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:24:32,417 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:24:32,417 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:24:32,419 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:24:32,419 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:keywords)
+2025-03-02 17:24:35,000 - lightrag - INFO - Query nodes: Main architecture, Sections, Figures, Diagrams, Methodology, top_k: 5, cosine: 0.2
+2025-03-02 17:24:35,016 - lightrag - INFO - Query edges: Paper analysis, Architecture explanation, Research findings, top_k: 5, cosine: 0.2
+2025-03-02 17:24:35,362 - lightrag - INFO - Local query uses 5 entites, 11 relations, 6 chunks
+2025-03-02 17:24:35,570 - lightrag - INFO - Global query uses 9 entites, 5 relations, 4 chunks
+2025-03-02 17:24:35,595 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:24:35,595 - lightrag - INFO - Non-embedding cached hit(mode:hybrid type:keywords)
+2025-03-02 17:24:35,595 - lightrag - INFO - Query nodes: Main architecture, Sections, Figures, Diagrams, Methodology, top_k: 60, cosine: 0.2
+2025-03-02 17:24:35,604 - lightrag - INFO - Query edges: Paper analysis, Architecture explanation, Research findings, top_k: 60, cosine: 0.2
+2025-03-02 17:24:36,094 - lightrag - INFO - Local query uses 60 entites, 84 relations, 11 chunks
+2025-03-02 17:24:36,141 - lightrag - INFO - Global query uses 79 entites, 60 relations, 13 chunks
+2025-03-02 17:27:14,931 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:27:14,945 - lightrag - INFO - Load KV llm_response_cache with 2 data
+2025-03-02 17:27:14,946 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:27:14,946 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:27:14,958 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:27:14,991 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:27:14,991 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:27:14,993 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:27:14,993 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:keywords)
+2025-03-02 17:27:15,793 - lightrag - INFO - Query nodes: Table 3, Data, Details, top_k: 5, cosine: 0.2
+2025-03-02 17:27:15,806 - lightrag - INFO - Query edges: Table, Information, top_k: 5, cosine: 0.2
+2025-03-02 17:27:16,338 - lightrag - INFO - Local query uses 5 entites, 10 relations, 5 chunks
+2025-03-02 17:27:16,357 - lightrag - INFO - Global query uses 8 entites, 5 relations, 4 chunks
+2025-03-02 17:27:16,375 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:27:16,375 - lightrag - INFO - Non-embedding cached hit(mode:hybrid type:keywords)
+2025-03-02 17:27:16,376 - lightrag - INFO - Query nodes: Table 3, Data, Details, top_k: 60, cosine: 0.2
+2025-03-02 17:27:16,385 - lightrag - INFO - Query edges: Table, Information, top_k: 60, cosine: 0.2
+2025-03-02 17:27:17,075 - lightrag - INFO - Local query uses 60 entites, 54 relations, 17 chunks
+2025-03-02 17:27:17,566 - lightrag - INFO - Global query uses 78 entites, 60 relations, 13 chunks
+2025-03-02 17:29:06,445 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:29:06,454 - lightrag - INFO - Load KV llm_response_cache with 2 data
+2025-03-02 17:29:06,455 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:29:06,455 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:29:06,471 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:29:06,504 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:29:06,504 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:29:06,506 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:29:06,506 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:keywords)
+2025-03-02 17:29:07,389 - lightrag - INFO - Query nodes: Base, Table 3, Specific details, top_k: 5, cosine: 0.2
+2025-03-02 17:29:07,401 - lightrag - INFO - Query edges: Data analysis, Database, Table information, top_k: 5, cosine: 0.2
+2025-03-02 17:29:07,811 - lightrag - INFO - Global query uses 8 entites, 5 relations, 4 chunks
+2025-03-02 17:29:07,833 - lightrag - INFO - Local query uses 5 entites, 10 relations, 5 chunks
+2025-03-02 17:29:07,852 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:29:07,853 - lightrag - INFO - Non-embedding cached hit(mode:hybrid type:keywords)
+2025-03-02 17:29:07,855 - lightrag - INFO - Query nodes: Base, Table 3, Specific details, top_k: 60, cosine: 0.2
+2025-03-02 17:29:07,863 - lightrag - INFO - Query edges: Data analysis, Database, Table information, top_k: 60, cosine: 0.2
+2025-03-02 17:29:08,200 - lightrag - INFO - Local query uses 60 entites, 59 relations, 17 chunks
+2025-03-02 17:29:08,470 - lightrag - INFO - Global query uses 81 entites, 60 relations, 16 chunks
+2025-03-02 17:30:33,646 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:30:33,655 - lightrag - INFO - Load KV llm_response_cache with 2 data
+2025-03-02 17:30:33,656 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:30:33,657 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:30:33,672 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:30:33,707 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:30:33,707 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:37:32,843 - lightrag - INFO - Logger initialized for working directory: data/default_db
+2025-03-02 17:37:32,855 - lightrag - INFO - Load KV llm_response_cache with 2 data
+2025-03-02 17:37:32,856 - lightrag - INFO - Load KV full_docs with 34 data
+2025-03-02 17:37:32,857 - lightrag - INFO - Load KV text_chunks with 36 data
+2025-03-02 17:37:32,870 - lightrag - INFO - Loaded graph from data/default_db/graph_chunk_entity_relation.graphml with 392 nodes, 243 edges
+2025-03-02 17:37:32,903 - lightrag - INFO - Loaded document status storage with 34 records
+2025-03-02 17:37:32,903 - lightrag - INFO - Creating a new event loop in main thread.
+2025-03-02 17:37:32,906 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:37:32,906 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:keywords)
+2025-03-02 17:37:33,880 - lightrag - INFO - Query nodes: Type of optimizer, Gradient descent, Adam, Learning rate, Convergence, top_k: 5, cosine: 0.2
+2025-03-02 17:37:33,894 - lightrag - INFO - Query edges: Optimizer, Machine learning, Algorithm efficiency, top_k: 5, cosine: 0.2
+2025-03-02 17:37:34,185 - lightrag - INFO - Local query uses 5 entites, 3 relations, 5 chunks
+2025-03-02 17:37:34,774 - lightrag - INFO - Global query uses 10 entites, 5 relations, 5 chunks
+2025-03-02 17:37:34,794 - lightrag - INFO - Non-embedding cached missed(mode:hybrid type:query)
+2025-03-02 17:37:34,795 - lightrag - INFO - Non-embedding cached hit(mode:hybrid type:keywords)
+2025-03-02 17:37:34,795 - lightrag - INFO - Query nodes: Type of optimizer, Gradient descent, Adam, Learning rate, Convergence, top_k: 60, cosine: 0.2
+2025-03-02 17:37:34,800 - lightrag - INFO - Query edges: Optimizer, Machine learning, Algorithm efficiency, top_k: 60, cosine: 0.2
+2025-03-02 17:37:35,098 - lightrag - INFO - Local query uses 60 entites, 99 relations, 12 chunks
+2025-03-02 17:37:35,504 - lightrag - INFO - Global query uses 73 entites, 60 relations, 13 chunks
