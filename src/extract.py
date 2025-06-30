@@ -48,8 +48,13 @@ class MarkdownCleaner:
         }
         
     def backup_file(self, file_path: Path) -> Path:
-        """Create a backup of the original file"""
-        backup_path = file_path.with_suffix(file_path.suffix + self.backup_suffix)
+        """Create a backup of the original file in backup subdirectory"""
+        # Create backup directory if it doesn't exist
+        backup_dir = file_path.parent / "backup"
+        backup_dir.mkdir(exist_ok=True)
+        
+        # Create backup path in the backup directory
+        backup_path = backup_dir / file_path.name
         shutil.copy2(file_path, backup_path)
         self.stats['files_backed_up'] += 1
         return backup_path
