@@ -26,14 +26,14 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(YELLOW)%-20s$(RESET) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(BLUE)Examples:$(RESET)"
-	@echo "  make extract URL=https://example.com                     # Auto-detects extraction method"
-	@echo "  make extract URL=https://docs.rs/tokio/latest/tokio     # Handles docs.rs automatically"
-	@echo "  make extract-pdf FILE=document.pdf                      # Extract from PDF"
-	@echo "  make clean-markdown DIR=output                          # Clean existing files"
+	@echo "  make extract-rustdoc URL=https://docs.rs/ratatui/latest/ratatui  # High-quality Rust docs"
+	@echo "  make extract URL=https://example.com                             # Auto-detects extraction method"
+	@echo "  make extract-pdf FILE=document.pdf                              # Extract from PDF"
+	@echo "  make clean-markdown DIR=output                                  # Clean existing files"
 	@echo ""
 	@echo "$(GREEN)Smart Features:$(RESET)"
 	@echo "  🔍 Auto-detects sitemaps"
-	@echo "  🦀 Special handling for docs.rs"
+	@echo "  🦀 High-quality JSON extraction for docs.rs (JSON API only)"
 	@echo "  🕷️  Intelligent crawling when no sitemap exists"
 	@echo "  🧹 Automatic markdown cleaning"
 
@@ -165,6 +165,17 @@ restore-backups: ## Restore all files from backup subdirectory (requires DIR=<di
 	@echo "$(BLUE)Restoring backup files from: $(DIR)/backup$(RESET)"
 	@find "$(DIR)/backup" -name "*.md" -exec sh -c 'cp "$$1" "$(DIR)/$$(basename "$$1")"' _ {} \; 2>/dev/null || true
 	@echo "$(GREEN)Backup restoration completed!$(RESET)"
+
+# Extract using Rustdoc JSON API (high quality)
+extract-rustdoc: create-output-dir ## Extract docs using Rustdoc JSON API (requires URL=<docs.rs_url>)
+	@if [ -z "$(URL)" ]; then \
+		echo "$(RED)Error: URL parameter is required$(RESET)"; \
+		echo "Usage: make extract-rustdoc URL=https://docs.rs/ratatui/latest/ratatui/"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)🦀 Extracting high-quality docs using Rustdoc JSON API$(RESET)"
+	$(VENV_ACTIVATE) $(PYTHON) src/rustdoc_json_extractor.py "$(URL)" --output-dir $(OUTPUT_DIR)
+	@echo "$(GREEN)✨ Rustdoc JSON extraction completed!$(RESET)"
 
 # Extract from URL list
 extract-urls: create-output-dir ## Extract content from a list of URLs (requires FILE=<url_list.txt>)

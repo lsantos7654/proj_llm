@@ -140,98 +140,34 @@ class SmartExtractor:
             return False
     
     def _extract_docs_rs(self, url: str) -> bool:
-        """Extract documentation from docs.rs"""
+        """Extract documentation from docs.rs using high-quality JSON API only"""
         try:
-            self.log("Extracting docs.rs crate documentation...", "📦", "info")
+            self.log("Using high-quality Rustdoc JSON API for docs.rs", "🦀", "info")
             
-            # Extract all documentation URLs
-            urls = self._crawl_docs_rs(url)
-            self.log(f"Found {len(urls)} documentation pages", "📊", "info")
+            # Import and use the rustdoc JSON extractor
+            from rustdoc_json_extractor import RustdocJsonExtractor
             
-            if not urls:
-                self.log("No documentation pages found", "⚠️", "warning")
-                return False
+            extractor = RustdocJsonExtractor(
+                output_dir=str(self.output_dir),
+                verbose=self.verbose
+            )
             
-            # Extract URLs directly instead of creating a sitemap
-            result = self._extract_urls_directly(urls)
+            result = extractor.extract_from_crate_url(url)
+            
+            if result:
+                self.log("Rustdoc JSON extraction completed successfully", "🎉", "success")
+            else:
+                self.log("Rustdoc JSON extraction failed - no fallback for docs.rs", "❌", "error")
             
             return result
             
+        except ImportError:
+            self.log("Rustdoc JSON extractor not available", "❌", "error")
+            return False
         except Exception as e:
-            self.log(f"Error extracting docs.rs: {e}", "❌", "error")
+            self.log(f"Error with Rustdoc JSON extraction: {e}", "❌", "error")
             return False
     
-    def _crawl_docs_rs(self, base_url: str) -> List[str]:
-        """Crawl docs.rs to get all documentation URLs"""
-        urls = set()
-        visited = set()
-        
-        # Clean up the base URL - remove /index.html if present
-        if base_url.endswith('/index.html'):
-            base_url = base_url[:-11]  # Remove '/index.html'
-        if not base_url.endswith('/'):
-            base_url += '/'
-            
-        to_visit = [base_url, f"{base_url}all.html"]
-        
-        # docs.rs specific patterns to include
-        include_patterns = ['.html', '/']
-        exclude_patterns = ['/src/', '?search=', '#', '.js', '.css', '.json']
-        
-        while to_visit and len(visited) < 200:  # Reasonable limit for docs.rs
-            url = to_visit.pop(0)
-            if url in visited:
-                continue
-            
-            visited.add(url)
-            self.log(f"Crawling: {url}", "🕸️", "debug")
-            
-            try:
-                response = requests.get(url, timeout=10)
-                if response.status_code != 200:
-                    self.log(f"Failed to fetch {url} (HTTP {response.status_code})", "⚠️", "debug")
-                    continue
-                
-                # Always add the current URL if it's a valid doc page
-                if not any(pattern in url for pattern in exclude_patterns):
-                    urls.add(url)
-                    self.log(f"Added: {url}", "✅", "debug")
-                
-                # Parse for more links - focus on sidebar navigation
-                soup = BeautifulSoup(response.content, 'html.parser')
-                
-                # Look specifically for documentation links in common areas
-                link_selectors = [
-                    'a[href]',  # All links
-                    '.sidebar a[href]',  # Sidebar links
-                    '.contents a[href]',  # Table of contents
-                    'nav a[href]'  # Navigation links
-                ]
-                
-                for selector in link_selectors:
-                    for link in soup.select(selector):
-                        href = link.get('href')
-                        if not href:
-                            continue
-                            
-                        full_url = urljoin(url, href)
-                        
-                        # Only follow links within the same crate documentation
-                        if (full_url.startswith(base_url) and 
-                            full_url not in visited and
-                            full_url not in to_visit and
-                            any(pattern in full_url for pattern in include_patterns) and
-                            not any(pattern in full_url for pattern in exclude_patterns)):
-                            to_visit.append(full_url)
-                
-                # Small delay to be respectful
-                time.sleep(0.2)
-                
-            except Exception as e:
-                self.log(f"Error crawling {url}: {e}", "⚠️", "debug")
-                continue
-        
-        return sorted(list(urls))
     
     def _extract_by_crawling(self, url: str) -> bool:
         """Extract by intelligently crawling the website"""
